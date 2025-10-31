@@ -1,76 +1,547 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-<meta charset="utf-8">
-<title>Preenchimento de Formulários de Propostas — Humana Brasil</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
-<style>
-:root{--green:#1E7E34;--ink:#1b1b1b;--bg:#fafafa;--muted:#667085}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-.wrap{max-width:980px;margin:0 auto;padding:20px}
-header{text-align:center;padding:20px 0}
-h1{margin:0 0 6px;font-size:26px}
-.lead{color:var(--muted);margin:0 0 12px}
-form{background:#fff;border:1px solid #eee;border-radius:12px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
-.grid{display:grid;grid-template-columns:1fr;gap:16px}
-label{display:block;font-weight:600;margin:4px 0 6px}
-input,textarea,select{width:100%;border:1px solid #d8dee4;border-radius:8px;padding:12px;font:inherit}
-textarea{min-height:120px;resize:vertical}
-.file-info{background:#f0f7f4;border-left:4px solid var(--green);padding:10px;border-radius:6px;margin-top:8px;font-size:13px;display:none}
-.btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:14px}
-.btn:disabled{opacity:.6;cursor:not-allowed}
-.status{min-height:22px;color:var(--muted);margin:8px 0 0;font-size:14px}
-.status.error{color:#d32f2f}
-.status.success{color:#1E7E34}
-.debug{background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0;font-size:12px;font-family:monospace;max-height:260px;overflow:auto;white-space:pre-wrap}
-.hidden{display:none}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.muted{color:#667085;font-size:12px}
-</style>
+  <meta charset="utf-8">
+  <title>Preenchimento de Formulários de Propostas — Humana Brasil</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <style>
+    :root{--green:#1E7E34;--ink:#1b1b1b;--bg:#fafafa;--muted:#667085}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:980px;margin:0 auto;padding:20px}
+    header{text-align:center;padding:20px 0}
+    h1{margin:0 0 6px;font-size:26px}
+    .lead{color:var(--muted);margin:0 0 12px}
+    form{background:#fff;border:1px solid #eee;border-radius:12px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    label{display:block;font-weight:600;margin:4px 0 6px}
+    input,textarea,select{width:100%;border:1px solid #d8dee4;border-radius:8px;padding:12px;font:inherit}
+    textarea{min-height:120px;resize:vertical}
+    .file-info{background:#f0f7f4;border-left:4px solid var(--green);padding:10px;border-radius:6px;margin-top:8px;font-size:13px;display:none}
+    .btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:14px}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .status{min-height:22px;color:var(--muted);margin:8px 0 0;font-size:14px}
+    .status.error{color:#d32f2f}
+    .status.success{color:#1E7E34}
+    .debug{background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0;font-size:12px;font-family:monospace;max-height:260px;overflow:auto;white-space:pre-wrap}
+    .hidden{display:none}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .muted{color:#667085;font-size:12px}
+  </style>
 </head>
 <body>
-<header class="wrap">
-<h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
-<p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche respostas respeitando critérios, requisitos e limites.</p>
-</header>
+  <header class="wrap">
+    <h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
+    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche respostas respeitando critérios, requisitos e limites.</p>
+  </header>
 
+  <main class="wrap">
+    <form id="formTool" class="grid" novalidate>
+      <div>
+        <label>1) Marco Lógico (PDF, DOCX, TXT, XLSX, XLS)</label>
+        <input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt,.xlsx,.xls" required>
+        <div id="marcoInfo" class="file-info"></div>
+      </div>
 
-<main class="wrap">
-<form id="formTool" class="grid" novalidate>
-<div>
-<label>1) Marco Lógico (PDF, DOCX, TXT, XLSX, XLS)</label>
-<input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt,.xlsx,.xls" required>
-<div id="marcoInfo" class="file-info"></div>
-</div>
+      <div>
+        <label>2) Edital (PDF, DOCX, TXT)</label>
+        <input type="file" id="editalFile" accept=".pdf,.docx,.doc,.txt" required>
+        <div id="editalInfo" class="file-info"></div>
+      </div>
 
+      <div>
+        <label>3) Formulário da Proposta (DOCX, DOC, PDF, XLSX, XLS, TXT)</label>
+        <input type="file" id="formFile" accept=".docx,.doc,.pdf,.xlsx,.xls,.txt" required>
+        <div id="formInfo" class="file-info"></div>
+      </div>
 
-<div>
-<label>2) Edital (PDF, DOCX, TXT)</label>
-<input type="file" id="editalFile" accept=".pdf,.docx,.doc,.txt" required>
-<div id="editalInfo" class="file-info"></div>
-</div>
+      <div class="two">
+        <div>
+          <label>Nome do Projeto</label>
+          <input id="projectName" type="text" placeholder="Ex: Territórios Vivos — Ilha do Bananal">
+        </div>
+        <div>
+          <label>Parceiro / Chamada</label>
+          <input id="partnerName" type="text" placeholder="Ex: União Europeia">
+        </div>
+      </div>
 
+      <div>
+        <label>Observações adicionais</label>
+        <textarea id="notes" placeholder="Pontos de ênfase, palavras-chave, público prioritário, etc."></textarea>
+      </div>
 
-<div>
-<label>3) Formulário da Proposta (DOCX, DOC, PDF, XLSX, XLS, TXT)</label>
-<input type="file" id="formFile" accept=".docx,.doc,.pdf,.xlsx,.xls,.txt" required>
-<div id="formInfo" class="file-info"></div>
-</div>
+      <div class="two">
+        <div>
+          <label>Idioma de saída</label>
+          <select id="lang">
+            <option value="pt-BR" selected>Português (pt-BR)</option>
+            <option value="es">Español (es)</option>
+            <option value="en">English (en)</option>
+          </select>
+          <div class="muted">Enviado ao Claude pelo Make</div>
+        </div>
+        <div>
+          <label>Arquivo DOCX gerado</label>
+          <input id="outFile" type="text" placeholder="Ex: Propuesta_TerritoriosVivos_es.docx">
+        </div>
+      </div>
 
+      <button id="submitBtn" class="btn" type="submit">Gerar Proposta DOCX</button>
+      <p id="status" class="status"></p>
+      <div id="debug" class="debug hidden"></div>
+    </form>
+  </main>
 
-<div class="two">
-<div>
-<label>Nome do Projeto</label>
-<input id="projectName" type="text" placeholder="Ex: Territórios Vivos — Ilha do Bananal">
-</div>
-<div>
-<label>Parceiro / Chamada</label>
-<input id="partnerName" type="text" placeholder="Ex: União Europeia">
+  <script>
+    /* ========= CONFIG ========= */
+    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+
+    /* ========= HELPERS ========= */
+    const $ = s => document.querySelector(s);
+    const show = el => el.classList.remove('hidden');
+    const hide = el => el.classList.add('hidden');
+    const sanitize = s => (s==null?'':String(s)
+      .replace(/^\uFEFF/, '')
+      .replace(/\uFEFF/g,'')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g,'')
+      .replace(/\r?\n/g,' ')
+      .replace(/\s+/g,' ')
+      .trim());
+
+    async function safeFetch(url, opts={}){
+      const resp = await fetch(url, opts);
+      const text = await resp.text();
+      return { ok: resp.ok, status: resp.status, statusText: resp.statusText, headers: resp.headers, text };
+    }
+
+    /* ========= FILE READERS ========= */
+    async function readPDF(file){
+      const arr = await file.arrayBuffer();
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const pdf = await pdfjsLib.getDocument({data:arr}).promise;
+      let text='';
+      for(let p=1;p<=pdf.numPages;p++){
+        const pg=await pdf.getPage(p);
+        const tc=await pg.getTextContent();
+        text += tc.items.map(i=>i.str).join(' ')+' ';
+      }
+      return sanitize(text);
+    }
+    async function readDOCX(file){
+      const arr = await file.arrayBuffer();
+      const res = await mammoth.extractRawText({arrayBuffer:arr});
+      return sanitize(res.value);
+    }
+    async function readXLSX(file){
+      const arr = await file.arrayBuffer();
+      const wb = XLSX.read(arr, {type:'array'});
+      let out = '';
+      wb.SheetNames.forEach(name=>{
+        const ws = wb.Sheets[name];
+        const csv = XLSX.utils.sheet_to_csv(ws, {FS:'\t', RS:'\n'});
+        out += `\n[${name}]\n` + csv + '\n';
+      });
+      try{
+        const first = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(first, {defval:'', raw:true});
+        const lines = json.slice(0,500).map(o=>Object.values(o).join(' | ')).join('\n');
+        out += '\n' + lines;
+      }catch(_){}
+      return sanitize(out);
+    }
+    async function readAny(file){
+      const name=(file.name||'').toLowerCase();
+      if(name.endsWith('.pdf')) return readPDF(file);
+      if(name.endsWith('.docx')||name.endsWith('.doc')) return readDOCX(file);
+      if(name.endsWith('.xlsx')||name.endsWith('.xls')) return readXLSX(file);
+      return sanitize(await file.text());
+    }
+
+    /* ========= EDITAL: LIMPEZA E EXTRAÇÕES ========= */
+    function cleanEdital(t){
+      if(!t) return '';
+      let s=' '+t+' ';
+      s=s.replace(/https?:\/\/\S+/gi,' ');
+      s=s.replace(/(\.{3,}|_{3,}|-{3,})/g,' ');
+      s=s.replace(/\b(frequently asked questions|faqs?|application process|apply now|grants? portal|character limits?|template|eligibility|budget guidelines?)\b[\s\S]{0,2000}/gi,' ');
+      s=s.replace(/\b(sumário|índice|conteúdo|contenido|índice)\b[\s\S]{0,2000}/gi,' ');
+      s=s.replace(/^\s*\d+(\.\d+)*\s+[^\.]{3,80}\.{3,}\s*\d+\s*$/gim,' ');
+      s=s.replace(/[A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑÚÍÉÓ]{4,}(?:\s+[A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑÚÍÉÓ]{3,})+/g,m=>m.toLowerCase());
+      s=s.replace(/\s+/g,' ').trim();
+      return s.slice(0,120000);
+    }
+
+    function extractCriteria(edital){
+      if(!edital) return [];
+      const s = ' '+edital+' ';
+      const crit = [];
+      const rx = /\b(crit[eé]rios?|criterios?|avalia[cç][aã]o|evaluaci[oó]n|itens de pontua[cç][aã]o|puntos? de evaluaci[oó]n|requisitos? obligat[oó]rios?)\b[\s\S]{0,600}/gi;
+      let m; while((m=rx.exec(s))!==null){
+        const chunk = m[0].replace(/\s+/g,' ').trim();
+        if(chunk.length>60) crit.push(chunk.slice(0,400));
+      }
+      return crit.slice(0,12);
+    }
+
+    function extractLimitsBlock(text){
+      const lim = [];
+      const rx = /\b(?:at[eé]\s*)?(\d{1,4})\s*(caracteres|palavras|caracter|palabra|palabras)\b/gi;
+      let m; while((m=rx.exec(text))!==null){
+        lim.push({value: parseInt(m[1],10), unit: m[2].toLowerCase()});
+      }
+      const rxPg = /\bm[aá]ximo\s+(\d{1,2})\s+p[aá]ginas?\b/gi;
+      while((m=rxPg.exec(text))!==null){
+        const p = Math.max(1, parseInt(m[1],10));
+        lim.push({value: p*500, unit: 'palavras'});
+      }
+      return lim;
+    }
+
+    function parseFormQuestionsGeneric(text){
+      const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
+      const qs = [];
+      for(let i=0;i<lines.length;i++){
+        const L = lines[i];
+        const isQ =
+          /[:?]$/.test(L) ||
+          /^\d+(\.\d+)*[\)\.\-]?\s+/.test(L) ||
+          /^t[ií]tulo|resumo|resumen|objetivo|metodolog[ií]a|p[úu]blico|pertin[eé]ncia|pertinencia|justificativa/i.test(L);
+        if(isQ){
+          const limit = extractLimitsBlock(L);
+          qs.push({
+            question: L.replace(/\s*[:?]$/,''),
+            limit: limit.length? normalizeLimit(limit[0]) : null
+          });
+        }
+      }
+      const rxHead = /^\d+(\.\d+)*\.\s+([A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑa-z].{2,})$/gm;
+      let m; while((m=rxHead.exec(text))!==null){
+        const q = m[0].trim();
+        if(!qs.find(x=>x.question===q)) qs.push({question:q, limit:null});
+      }
+      const seen = new Set();
+      const out = qs.filter(q=>{
+        const k = q.question.toLowerCase();
+        if(seen.has(k)) return false; seen.add(k); return true;
+      });
+      return out.slice(0,120);
+    }
+
+    function normalizeLimit(lim){
+      if(!lim) return null;
+      let unit = (lim.unit||'').toLowerCase();
+      unit = unit.replace('caracteres','chars').replace('caracter','chars')
+                 .replace('palavras','words').replace('palabra','words').replace('palabras','words');
+      return { value: lim.value, unit: unit };
+    }
+
+    function parseUESpanishForm(text){
+      const qs = [];
+      const t = ' '+String(text||'')+' ';
+      const add = (question, limitText)=>{
+        let lim = null;
+        if(limitText){
+          const found = extractLimitsBlock(limitText);
+          if(found && found.length) lim = normalizeLimit(found[0]);
+        }
+        if(!qs.find(q=>q.question===question)) qs.push({question, limit:lim});
+      };
+      if(/1\.1\.\s*resumen de la acci[oó]n/i.test(t)) add('1.1. Resumen de la acción', null);
+      if(/1\.1\.1\.\s*cumplimente el cuadro/i.test(t)) add('1.1.1. Cumplimente el cuadro del resumen de la acción', null);
+      const sec12 = /1\.2\.\s*descripci[oó]n de la acci[oó]n[:\s]*\(m[aá]ximo\s*dos\s*p[aá]ginas?\)/i;
+      if(sec12.test(t)) add('1.2. Descripción de la acción', 'máximo dos páginas');
+      const subs12 = [
+        'i. Señale los antecedentes e análises base do desenho (contexto/estudos).',
+        'ii. Explique os objetivos citados na seção 1.1.',
+        'iii. Partes interessadas, atitudes e consultas realizadas.',
+        'iv. Lógica de intervenção, produtos, efeitos, impacto, riscos e pressupostos.',
+        'v. Atividades propostas e vínculos entre grupos de atividades.',
+        'vi. Integração de transversais: direitos humanos, gênero, governança, juventude, povos indígenas, ambiente, HIV/sida.',
+        'vii. Calendário indicativo e fatores específicos.'
+      ];
+      subs12.forEach(s=>add(s, 'máximo duas páginas'));
+      const sec13 = /1\.3\.\s*pertinencia de la acci[oó]n[:\s]*\(m[aá]ximo\s*tres\s*p[aá]ginas?\)/i;
+      if(sec13.test(t)) add('1.3. Pertinencia de la acción', 'máximo tres páginas');
+      if(/1\.3\.1\./i.test(t)){
+        add('1.3.1. Pertinência face a objetivos e prioridades da convocatória', 'máximo tres páginas');
+        add('1.3.1.i. Pertinência com objetivos/prioridades', 'máximo tres páginas');
+        add('1.3.1.ii. Subtemas/ámbitos e requisitos da Guia', 'máximo tres páginas');
+        add('1.3.1.iii. Resultados previstos da Guia a serem abordados', 'máximo tres páginas');
+      }
+      if(/1\.3\.2\./i.test(t)){
+        add('1.3.2.i. Situação prévia com dados quantificados', 'máximo tres páginas');
+        add('1.3.2.ii. Análise de problemas e inter-relações', 'máximo tres páginas');
+        add('1.3.2.iii. Planos relevantes e relação com a ação', 'máximo tres páginas');
+        add('1.3.2.iv. Continuidade de ação anterior e uso de resultados', 'máximo tres páginas');
+        add('1.3.2.v. Integração em programa amplo e sinergias', 'máximo tres páginas');
+        add('1.3.2.vi. Complementaridade com iniciativas UE e doadores', 'máximo tres páginas');
+      }
+      if(/1\.3\.3\./i.test(t)){
+        add('1.3.3.i. Descrição/quantificação dos destinatários e beneficiários', 'máximo tres páginas');
+        add('1.3.3.ii. Necessidades/dificuldades (capacidade)', 'máximo tres páginas');
+        add('1.3.3.iii. Pertinência da proposta às necessidades', 'máximo tres páginas');
+        add('1.3.3.iv. Processos participativos para garantir participação', 'máximo tres páginas');
+      }
+      if(/1\.3\.4\./i.test(t)){
+        add('1.3.4. Valor agregado: PPP, inovação, boas práticas', 'máximo tres páginas');
+      }
+      if(/1\.4\.\s*solicitante principal/i.test(t)){
+        add('1.4. Solicitante principal, cosolicitantes e afiliadas', null);
+      }
+      qs.forEach(q=>{ if(q.limit) q.limit = normalizeLimit(q.limit); });
+      return qs;
+    }
+
+    function stripFencesAndBOM(s){
+      if(!s) return '';
+      let t = String(s).replace(/^\uFEFF/, '').trim();
+      if(t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i,'');
+      if(t.endsWith('```')) t = t.slice(0, -3);
+      return t.trim();
+    }
+    function extractBalancedFromStringToJSON(s, startIndex, openCh, closeCh){
+      let inStr=false, esc=false, depth=0;
+      for(let i=startIndex;i<s.length;i++){
+        const c = s[i];
+        if(inStr){
+          if(esc){ esc=false; continue; }
+          if(c==='\\'){ esc=true; continue; }
+          if(c==='"'){ inStr=false; continue; }
+          continue;
+        }else{
+          if(c === '"'){ inStr=true; continue; }
+          if(c === openCh){
+            depth++;
+          }else if(c === closeCh){
+            depth--;
+            if(depth===0){
+              const candidate = s.slice(startIndex, i+1).trim();
+              try{ return JSON.parse(candidate); }
+              catch(_){
+                try{
+                  const cleaned = candidate.replace(/}\s*[\s\S]*$/, '}').replace(/]\s*[\s\S]*$/, ']');
+                  return JSON.parse(cleaned);
+                }catch(__){ return null; }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    }
+    function extractFirstJSONValue(raw, keyHints){
+      const s = stripFencesAndBOM(raw);
+      const n = s.length;
+      if(Array.isArray(keyHints) && keyHints.length){
+        const idx = s.toLowerCase().indexOf(String(keyHints[0]).toLowerCase());
+        if(idx>=0){
+          for(let j=idx;j>=0;j--){
+            if(s[j]==='{'){
+              const obj = extractBalancedFromStringToJSON(s, j, '{','}');
+              if(obj) return obj;
+              break;
+            }
+          }
+        }
+      }
+      for(let i=0;i<n;i++){
+        const c = s[i];
+        if(c==='{'){
+          const obj = extractBalancedFromStringToJSON(s, i, '{','}');
+          if(obj) return obj;
+        }
+        if(c==='['){
+          const arr = extractBalancedFromStringToJSON(s, i, '[',']');
+          if(arr){
+            if(Array.isArray(arr)) return { filled_form: arr };
+          }
+        }
+      }
+      try{
+        const direct = JSON.parse(s);
+        if(Array.isArray(direct)) return { filled_form: direct };
+        return direct;
+      }catch(_){ return null; }
+    }
+
+    const H = docx.HeadingLevel;
+    const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
+    const H1 = (t)=> P(t,{heading:H.HEADING_1});
+    const H2 = (t)=> P(t,{heading:H.HEADING_2});
+    function docFromFilled(filled, meta){
+      const children = [];
+      children.push(H1(meta?.title || 'Proposta — Formulário Preenchido'));
+      if(meta?.project) children.push(P('Projeto: ' + meta.project));
+      if(meta?.partner) children.push(P('Chamada: ' + meta.partner));
+      children.push(P(''));
+      filled.forEach((item,idx)=>{
+        const head = `${idx+1}. ${item.question}`;
+        children.push(H2(head));
+        if(item.limit && item.limit.value){
+          const unit = item.limit.unit && item.limit.unit.startsWith('char') ? 'caracteres' : 'palavras';
+          children.push(P(`Limite: até ${item.limit.value} ${unit}`));
+        }
+        children.push(P(item.answer || ''));
+        children.push(P(''));
+      });
+      return new docx.Document({ sections:[{properties:{},children}] });
+    }
+    async function saveDocx(doc, filename){
+      const blob = await docx.Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = filename || ('Proposta_'+Date.now()+'.docx');
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    async function handleFile(inputEl, infoEl, reader){
+      const f = inputEl.files[0];
+      if(!f){ infoEl.style.display='none'; return ''; }
+      infoEl.textContent='Lendo arquivo...'; infoEl.style.display='block';
+      try{
+        const txt = await reader(f);
+        infoEl.textContent = `✓ ${f.name} | ${(txt.length/1024).toFixed(1)} KB texto`;
+        return txt;
+      }catch(e){
+        infoEl.textContent = 'Erro ao ler: ' + e.message;
+        return '';
+      }
+    }
+
+    let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
+    $('#marcoFile').addEventListener('change', async ()=>{
+      MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny);
+    });
+    $('#editalFile').addEventListener('change', async ()=>{
+      const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny);
+      EDITAL_TXT = cleanEdital(raw);
+    });
+    $('#formFile').addEventListener('change', async ()=>{
+      FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
+    });
+
+    $('#lang').addEventListener('change', ()=>{
+      const cur = ($('#outFile').value||'').trim();
+      if(cur) return;
+      const lang = $('#lang').value;
+      const base = ($('#projectName').value||'Proposta').replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_').slice(0,40) || 'Proposta';
+      const suf = lang==='pt-BR' ? 'pt-BR' : lang;
+      $('#outFile').value = `${base}_${suf}.docx`;
+    });
+
+    document.getElementById('formTool').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      hide($('#debug'));
+      const statusEl = $('#status');
+      statusEl.classList.remove('error','success');
+      statusEl.textContent='';
+
+      if(!MARCO_TXT || !EDITAL_TXT || !FORM_TXT){
+        statusEl.textContent='Anexe os três arquivos antes de gerar.';
+        statusEl.classList.add('error');
+        return;
+      }
+
+      try{
+        $('#submitBtn').disabled = true;
+        statusEl.textContent = 'Extraindo perguntas e limites...';
+
+        let questions = parseFormQuestionsGeneric(FORM_TXT);
+        if(questions.length < 8 && /resumen de la acci[oó]n|pertinencia de la acci[oó]n|solicitante principal/i.test(FORM_TXT)){
+          const ueQs = parseUESpanishForm(FORM_TXT);
+          if(ueQs.length) questions = ueQs;
+        }
+        questions = questions.map(q=>{ if(q.limit && q.limit.unit) q.limit.unit = q.limit.unit.toLowerCase(); return q; });
+
+        const criteria = extractCriteria(EDITAL_TXT);
+
+        const payload = {
+          lang: ($('#lang').value||'pt-BR').trim(),
+          project: ($('#projectName').value||'').trim(),
+          partner: ($('#partnerName').value||'').trim(),
+          outFile: ($('#outFile').value||'').trim(),
+          notes: ($('#notes').value||'').trim(),
+
+          // chaves minúsculas (compatibilidade antiga)
+          marco_logico: MARCO_TXT.slice(0,120000),
+          edital: EDITAL_TXT.slice(0,120000),
+          form_text: FORM_TXT.slice(0,120000),
+          questions: questions,
+          criteria_from_call: criteria,
+          questions_raw: JSON.stringify(questions),
+
+          // chaves MAIÚSCULAS (compatibilidade com seu backend atual)
+          MARCO_LOGICO: MARCO_TXT.slice(0,120000),
+          EDITAL: EDITAL_TXT.slice(0,120000),
+          FORM_TEXT: FORM_TXT.slice(0,120000),
+          QUESTIONS_RAW: JSON.stringify(questions),
+          CRITERIA_FROM_CALL: criteria
+        };
+
+        statusEl.textContent = 'Enviando ao backend...';
+
+        const { ok, status, statusText, headers, text } = await safeFetch(WEBHOOK_URL, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json, text/plain'},
+          body: JSON.stringify(payload)
+        });
+
+        const sizes = `TXTs enviados — FORM_TEXT:${payload.FORM_TEXT.length} | MARCO_LOGICO:${payload.MARCO_LOGICO.length} | EDITAL:${payload.EDITAL.length} | Qs:${questions.length}`;
+        $('#debug').textContent = `Status: ${status} ${statusText}
+content-type: ${headers.get('content-type')||''}
+${sizes}
+
+RAW:
+${(text||'').slice(0,2000)}`;
+        show($('#debug'));
+
+        if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
+        const resp = (text||'').trim();
+        if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
+
+        // se backend retornou um JSON de erro (com fences)
+        const maybeErr = extractFirstJSONValue(resp, ['"status"','status']);
+        if(maybeErr && typeof maybeErr==='object' && maybeErr.status && String(maybeErr.status).toLowerCase()!=='ok' && !maybeErr.filled_form){
+          throw new Error(maybeErr.mensagem || 'Backend retornou erro.');
+        }
+
+        // parse normal para filled_form
+        const parsed = extractFirstJSONValue(resp, ['"filled_form"','filled_form']);
+        if(!parsed) throw new Error('Não foi possível localizar JSON válido na resposta.');
+
+        const data = Array.isArray(parsed.filled_form) ? parsed : (Array.isArray(parsed) ? {filled_form: parsed} : parsed);
+        if(!data || !Array.isArray(data.filled_form) || data.filled_form.length===0){
+          throw new Error('Resposta inválida do backend. Preview: ' + resp.slice(0,300));
+        }
+
+        const meta = {
+          title: 'Proposta — Formulário Preenchido',
+          project: payload.project,
+          partner: payload.partner
+        };
+        const doc = docFromFilled(data.filled_form, meta);
+        const fname = payload.outFile || (payload.project ? (payload.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_') + '_' + payload.lang + '.docx') : 'Proposta_Preenchida.docx');
+        await saveDocx(doc, fname);
+
+        statusEl.textContent='✓ DOCX gerado com sucesso';
+        statusEl.classList.add('success');
+
+      }catch(err){
+        const statusEl = $('#status');
+        statusEl.textContent = 'Erro: ' + err.message;
+        statusEl.classList.add('error');
+      }finally{
+        $('#submitBtn').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+
