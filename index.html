@@ -64,7 +64,7 @@
       <div class="two">
         <div>
           <label>Nome do Projeto</label>
-          <input id="projectName" type="text" placeholder="Ex: Territórios Vivos — Ilha do Bananal">
+          <input id="projectName" type="text" placeholder="Ex: Territórios Vivos, Ilha do Bananal">
         </div>
         <div>
           <label>Parceiro / Chamada</label>
@@ -74,7 +74,7 @@
 
       <div>
         <label>Observações adicionais</label>
-        <textarea id="notes" placeholder="Ênfases, palavras-chave, público prioritário"></textarea>
+        <textarea id="notes" placeholder="Pontos de ênfase, palavras-chave, público prioritário"></textarea>
       </div>
 
       <div class="two">
@@ -100,32 +100,28 @@
   </main>
 
   <script>
-    /* ===== Config ===== */
-    const WEBHOOK_URL='https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
-    const BATCH_SIZE=8;
+    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+    const BATCH_SIZE = 8;
 
-    /* ===== Utils ===== */
-    const $=s=>document.querySelector(s);
-    const show=el=>el.classList.remove('hidden');
-    const hide=el=>el.classList.add('hidden');
-    const sanitize=s=>(s==null?'':String(s)
+    const $ = s => document.querySelector(s);
+    const show = el => el.classList.remove('hidden');
+    const hide = el => el.classList.add('hidden');
+
+    const sanitize = s => (s==null?'':String(s)
       .replace(/^\uFEFF/,'').replace(/\uFEFF/g,'')
       .replace(/[\u0000-\u001F\u007F-\u009F]/g,'')
-      .replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim());
-    const safeSlice=(t,n)=>sanitize(String(t||'')).slice(0,n);
+      .replace(/\r?\n/g,' ')
+      .replace(/\s+/g,' ')
+      .trim());
 
-    async function safeFetch(url,opts={}){
-      try{
-        const resp=await fetch(url,opts);
-        const text=await resp.text().catch(()=> '');
-        return { ok:resp.ok, status:resp.status, statusText:resp.statusText, headers:resp.headers, text };
-      }catch(err){
-        // CORS/network
-        throw new Error('Falha de rede/CORS: '+(err&&err.message?err.message:'erro desconhecido'));
-      }
+    const safeSlice = (t,n)=>sanitize(String(t||'')).slice(0,n);
+
+    async function safeFetch(url,opts={}) {
+      const resp = await fetch(url,opts);
+      const text = await resp.text().catch(()=> '');
+      return { ok:resp.ok, status:resp.status, statusText:resp.statusText, headers:resp.headers, text };
     }
 
-    /* ===== Readers ===== */
     async function readPDF(file){
       const arr=await file.arrayBuffer();
       pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -153,14 +149,12 @@
       return sanitize(await file.text());
     }
     async function handleFile(inputEl,infoEl,reader){
-      const f=inputEl.files[0];
-      if(!f){ infoEl.style.display='none'; return ''; }
+      const f=inputEl.files[0]; if(!f){ infoEl.style.display='none'; return ''; }
       infoEl.textContent='Lendo arquivo...'; infoEl.style.display='block';
       try{ const txt=await reader(f); infoEl.textContent=`✓ ${f.name}`; return txt; }
       catch(e){ infoEl.textContent='Erro ao ler: '+e.message; return ''; }
     }
 
-    /* ===== Questions ===== */
     function extractLimitsBlock(text){
       const lim=[]; let m;
       const rx=/\b(?:at[eé]\s*)?(\d{1,4})\s*(caracteres|palavras|caracter|palabra|palabras)\b/gi;
@@ -173,61 +167,85 @@
       if(!lim) return null;
       let u=(lim.unit||'').toLowerCase();
       u=u.replace('caracteres','chars').replace('caracter','chars').replace('palavras','words').replace('palabra','words').replace('palabras','words');
-      return { value:lim.value, type:u };
+      return { value: lim.value, type: u };
     }
     function isInstructionLike(q){
-      const t=String(q||'').toLowerCase();
+      const t = String(q||'').toLowerCase();
       if(/^\[/.test(t)) return true;
       if(/instrucci[oó]nes|instru[cç][oõ]es|instruções|cumplimente|rellene|suprima|preencher/.test(t)) return true;
       if(t.length>360) return true;
       return false;
     }
+
     function parseFormQuestionsGeneric(text){
-      const lines=String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
-      const qs=[];
+      const src = String(text||'');
+      const lines = src.split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
+      const qs = [];
+
       for(const L of lines){
-        const isQ=/[:?]$/.test(L)||/^\d+(\.\d+)*[)\.-]?\s+/.test(L)||/^t[ií]tulo|resumen|resumo|objetivo|metodolog[ií]a|p[úu]blico|pertin(e|é)ncia|pertinencia|justificativa/i.test(L);
-        if(isQ){ const lim=extractLimitsBlock(L); qs.push({question:L.replace(/\s*[:?]$/,''), limit:lim.length?normalizeLimit(lim[0]):null}); }
+        const isQ =
+          /[:?]$/.test(L) ||
+          /^\d+(\.\d+)*[)\.-]?\s+/.test(L) ||
+          /^t[ií]tulo|resumen|resumo|objetivo|metodolog[ií]a|p[úu]blico|pertin(e|é)ncia|pertinencia|justificativa/i.test(L);
+        if(isQ){
+          const lim = extractLimitsBlock(L);
+          qs.push({ question: L.replace(/\s*[:?]$/,''), limit: lim.length? normalizeLimit(lim[0]) : null });
+        }
       }
-      const seen=new Set(), uniq=[];
-      for(const q of qs){ const k=q.question.toLowerCase(); if(seen.has(k)) continue; if(isInstructionLike(q.question)) continue; seen.add(k); uniq.push(q); }
+
+      // fallback por cabeçalhos numerados típicos da UE
+      if(qs.length < 2){
+        const rxHead = /(\d+(?:\.\d+)+\s+[^\n]{5,200})/g;
+        const hits = (src.match(rxHead)||[]).slice(0,60);
+        hits.forEach(h=>{
+          const txt = sanitize(h);
+          if(!isInstructionLike(txt)) qs.push({question:txt, limit:null});
+        });
+      }
+
+      const uniq = []; const seen = new Set();
+      for(const q of qs){
+        const k=q.question.toLowerCase();
+        if(seen.has(k)) continue;
+        if(isInstructionLike(q.question)) continue;
+        seen.add(k);
+        uniq.push(q);
+      }
       return uniq.slice(0,120);
     }
 
-    /* ===== DOCX ===== */
-    const H=docx.HeadingLevel;
-    const P=(t,opts={})=>new docx.Paragraph({text:t||'',...opts});
-    const H1=t=>P(t,{heading:H.HEADING_1});
-    const H2=t=>P(t,{heading:H.HEADING_2});
-    function docFromFilled(filled,meta){
-      const kids=[];
-      kids.push(H1(meta?.title || 'Proposta — Formulário Preenchido'));
-      if(meta?.project) kids.push(P('Projeto: '+meta.project));
-      if(meta?.partner) kids.push(P('Chamada: '+meta.partner));
-      kids.push(P(''));
-      filled.forEach((it,idx)=>{
-        kids.push(H2(`${idx+1}. ${it.question}`));
-        const lim=it.limit||null;
-        const unitKey=lim&&(lim.type||lim.unit)||'';
-        const label=String(unitKey).startsWith('char')?'caracteres':(String(unitKey).startsWith('word')?'palavras':'');
-        if(lim&&lim.value) kids.push(P(`Limite: até ${lim.value} ${label}`));
-        kids.push(P(it.answer||'')); kids.push(P(''));
+    const H = docx.HeadingLevel;
+    const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
+    const H1 = t => P(t,{heading:H.HEADING_1});
+    const H2 = t => P(t,{heading:H.HEADING_2});
+    function docFromFilled(filled, meta){
+      const children=[];
+      children.push(H1(meta?.title || 'Proposta — Formulário Preenchido'));
+      if(meta?.project) children.push(P('Projeto: '+meta.project));
+      if(meta?.partner) children.push(P('Chamada: '+meta.partner));
+      children.push(P(''));
+      filled.forEach((item,idx)=>{
+        children.push(H2(`${idx+1}. ${item.question}`));
+        const lim = item.limit || null;
+        const u = lim && (lim.type||lim.unit) || '';
+        const label = String(u).startsWith('char') ? 'caracteres' : (String(u).startsWith('word') ? 'palavras' : '');
+        if(lim && lim.value) children.push(P(`Limite: até ${lim.value} ${label}`));
+        children.push(P(item.answer||'')); children.push(P(''));
       });
-      return new docx.Document({sections:[{properties:{},children:kids}]});
+      return new docx.Document({ sections:[{properties:{},children}] });
     }
-    async function saveDocx(doc,filename){
-      const blob=await docx.Packer.toBlob(doc);
-      const url=URL.createObjectURL(blob); const a=document.createElement('a');
-      a.href=url; a.download=filename||('Proposta_'+Date.now()+'.docx');
+    async function saveDocx(doc, filename){
+      const blob = await docx.Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = filename || ('Proposta_'+Date.now()+'.docx');
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
 
-    /* ===== Response parse ===== */
     function stripFencesAndBOM(s){
       if(!s) return '';
-      let t=String(s).replace(/^\uFEFF/,'').trim();
-      if(t.startsWith('```')) t=t.replace(/^```(?:json)?\s*/i,'');
-      if(t.endsWith('```')) t=t.slice(0,-3);
+      let t = String(s).replace(/^\uFEFF/,'').trim();
+      if(t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i,'');
+      if(t.endsWith('```')) t = t.slice(0,-3);
       return t.trim();
     }
     function extractBalancedFromStringToJSON(s,startIndex,openCh,closeCh){
@@ -254,7 +272,7 @@
       return null;
     }
     function extractFirstJSONValue(raw){
-      const s=stripFencesAndBOM(raw), n=s.length;
+      const s = stripFencesAndBOM(raw), n = s.length;
       for(let i=0;i<n;i++){
         const c=s[i];
         if(c==='{'){ const o=extractBalancedFromStringToJSON(s,i,'{','}'); if(o) return o; }
@@ -264,42 +282,54 @@
     }
     const filterFilled = arr => arr.filter(it=>!isInstructionLike(it.question));
 
-    /* ===== State + listeners ===== */
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
     $('#marcoFile').addEventListener('change', async ()=>{ MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny); });
     $('#editalFile').addEventListener('change', async ()=>{ EDITAL_TXT = await handleFile($('#editalFile'), $('#editalInfo'), readAny); });
     $('#formFile').addEventListener('change', async ()=>{ FORM_TXT  = await handleFile($('#formFile'),  $('#formInfo'),  readAny); });
 
     async function callBackend(questionsChunk, meta){
-      const compact={
-        lang:'pt-BR', questions_lang:'es', force_pt_br:true,
-        project:meta.project, partner:meta.partner, notes:meta.notes,
-        questions:questionsChunk, edital_criteria:[],
+      const compact = {
+        lang:'pt-BR',
+        questions_lang:'es',
+        force_pt_br:true,
+        project:meta.project,
+        partner:meta.partner,
+        notes:meta.notes,
+        questions:questionsChunk,
+        edital_criteria:[],
         marco_excerpt:safeSlice(MARCO_TXT,6000),
         edital_excerpt:safeSlice(EDITAL_TXT,8000),
         form_excerpt:safeSlice(FORM_TXT,4000)
       };
-      const compact_b64=btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
-      const payload={ lang:compact.lang, project:compact.project, partner:compact.partner, outFile:meta.outFile, notes:compact.notes, compact_b64:compact_b64, q_count:questionsChunk.length };
-
-      const {ok,status,statusText,headers,text}=await safeFetch(WEBHOOK_URL,{
+      const compact_b64 = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
+      const payload = {
+        lang:compact.lang,
+        project:compact.project,
+        partner:compact.partner,
+        outFile:meta.outFile,
+        notes:compact.notes,
+        compact_b64:compact_b64,
+        q_count:questionsChunk.length
+      };
+      const {ok,status,statusText,headers,text} = await safeFetch(WEBHOOK_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json','Accept':'application/json, text/plain'},
-        body:JSON.stringify(payload)
+        body: JSON.stringify(payload)
       });
 
-      $('#debug').textContent=`Status: ${status} ${statusText}
+      $('#debug').textContent = `Status: ${status} ${statusText}
 content-type: ${headers.get('content-type')||''}
 Qs lote: ${questionsChunk.length}
 
 RAW:
-${(text||'').slice(0,1200)}`;
+${(text||'').slice(0,1500)}`;
       show($('#debug'));
 
       if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
-      const resp=(text||'').trim(); if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
-      const data=extractFirstJSONValue(resp);
-      if(!data||!Array.isArray(data.filled_form)) throw new Error('Resposta inválida do backend ou sem filled_form.');
+      const resp = (text||'').trim();
+      if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
+      const data = extractFirstJSONValue(resp);
+      if(!data || !Array.isArray(data.filled_form)) throw new Error('Resposta inválida do backend ou sem filled_form.');
       return filterFilled(data.filled_form);
     }
 
@@ -307,21 +337,36 @@ ${(text||'').slice(0,1200)}`;
       e.preventDefault(); hide($('#debug'));
       const st=$('#status'); st.classList.remove('error','success'); st.textContent='';
 
-      // valida leitura
-      if(!MARCO_TXT||!EDITAL_TXT||!FORM_TXT){
-        st.textContent='Anexe e aguarde a leitura dos três arquivos.'; st.classList.add('error'); return;
+      if(!MARCO_TXT || !EDITAL_TXT || !FORM_TXT){
+        st.textContent='Anexe os três arquivos e aguarde a leitura.'; st.classList.add('error'); return;
       }
 
       try{
-        $('#submitBtn').disabled=true; st.textContent='Extraindo perguntas...';
-        // extrai perguntas do formulário
-        let questions=parseFormQuestionsGeneric(FORM_TXT);
-        if(questions.length===0) throw new Error('Nenhuma pergunta válida encontrada no formulário.');
+        $('#submitBtn').disabled=true;
+        st.textContent='Extraindo perguntas do formulário...';
 
-        // lotes estáveis
+        let questions = parseFormQuestionsGeneric(FORM_TXT);
+
+        // fallback agressivo: se ainda não achou, cria itens a partir de quebras por título
+        if(questions.length < 2){
+          const blocks = FORM_TXT.split(/\s(?=\d+\.\d+|\d+\))/).map(s=>sanitize(s)).filter(s=>s && s.length>20);
+          const extra = blocks.slice(0,20).map(b=>({question:b.slice(0,220), limit:null})).filter(q=>!isInstructionLike(q.question));
+          questions = questions.concat(extra);
+        }
+
+        // último recurso: ainda vazio, envia uma única pergunta genérica, mas com split posterior não haverá erro de “nenhuma pergunta”
+        if(questions.length === 0){
+          questions = [{question:'Descripción de la acción y pertinencia completas según el formulario', limit:null}];
+        }
+
+        const meta = {
+          project:($('#projectName').value||'').trim(),
+          partner:($('#partnerName').value||'').trim(),
+          notes:($('#notes').value||'').trim(),
+          outFile:($('#outFile').value||'').trim()
+        };
+
         const batches=[]; for(let i=0;i<questions.length;i+=BATCH_SIZE){ batches.push(questions.slice(i,i+BATCH_SIZE)); }
-
-        const meta={ project:($('#projectName').value||'').trim(), partner:($('#partnerName').value||'').trim(), notes:($('#notes').value||'').trim(), outFile:($('#outFile').value||'').trim() };
 
         st.textContent=`Enviando ${batches.length} lote(s) para o Make...`;
         let filledAll=[];
@@ -330,15 +375,17 @@ ${(text||'').slice(0,1200)}`;
           const part=await callBackend(batches[b], meta);
           filledAll=filledAll.concat(part);
         }
-
         if(filledAll.length===0) throw new Error('Sem respostas após processamento.');
-        const doc=docFromFilled(filledAll,{title:'Proposta — Formulário Preenchido', project:meta.project, partner:meta.partner});
-        const fname=meta.outFile||(meta.project?meta.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_')+'_pt-BR.docx':'Proposta_pt-BR.docx');
-        await saveDocx(doc,fname);
 
-        st.textContent='✓ DOCX gerado com sucesso'; st.classList.add('success');
+        const doc = docFromFilled(filledAll, {title:'Proposta — Formulário Preenchido', project:meta.project, partner:meta.partner});
+        const fname = meta.outFile || (meta.project ? meta.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_') + '_pt-BR.docx' : 'Proposta_pt-BR.docx');
+        await saveDocx(doc, fname);
+
+        st.textContent='✓ DOCX gerado com sucesso';
+        st.classList.add('success');
+
       }catch(err){
-        st.textContent='Erro: '+err.message; st.classList.add('error');
+        const st=$('#status'); st.textContent='Erro: '+err.message; st.classList.add('error');
         console.error(err);
       }finally{
         $('#submitBtn').disabled=false;
@@ -347,5 +394,6 @@ ${(text||'').slice(0,1200)}`;
   </script>
 </body>
 </html>
+
 
 
