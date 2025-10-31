@@ -170,22 +170,17 @@
         const arr = await file.arrayBuffer();
         const wb = XLSX.read(arr, {type: 'array'});
         let out = '';
-        
-        // Percorre todas as abas
         wb.SheetNames.forEach(name => {
           const ws = wb.Sheets[name];
           const csv = XLSX.utils.sheet_to_csv(ws, {FS: '\t', RS: '\n'});
           out += `\n[Aba: ${name}]\n` + csv + '\n';
         });
-        
-        // Tenta também extrair como JSON da primeira aba
         try {
           const first = wb.Sheets[wb.SheetNames[0]];
           const json = XLSX.utils.sheet_to_json(first, {defval: '', raw: true});
           const lines = json.slice(0, 100).map(o => Object.values(o).join(' | ')).join('\n');
           out += '\n[Dados em formato tabular]\n' + lines;
         } catch (_) {}
-        
         return sanitize(out);
       } catch (error) {
         console.error('Erro ao ler XLSX:', error);
@@ -206,20 +201,10 @@
     function cleanEdital(text) {
       if (!text) return '';
       let s = ' ' + text + ' ';
-      
-      // Remove URLs
       s = s.replace(/https?:\/\/\S+/gi, ' ');
-      
-      // Remove linhas pontilhadas
       s = s.replace(/(\.{3,}|_{3,}|-{3,})/g, ' ');
-      
-      // Remove seções desnecessárias
       s = s.replace(/\b(frequently asked questions|faqs?|sumário|índice|conteúdo)\b[\s\S]{0,2000}/gi, ' ');
-      
-      // Normaliza espaços
       s = s.replace(/\s+/g, ' ').trim();
-      
-      // Limita tamanho
       return s.slice(0, 100000);
     }
 
@@ -230,39 +215,25 @@
         /\b(critérios?|avaliação|pontuação|requisitos?\s+obrigatórios?)\b[\s\S]{0,800}/gi,
         /\b(elegibilidade|seleção|classificação)\b[\s\S]{0,600}/gi
       ];
-      
       patterns.forEach(rx => {
         let m;
         while ((m = rx.exec(edital)) !== null) {
           const chunk = m[0].replace(/\s+/g, ' ').trim();
-          if (chunk.length > 50 && chunk.length < 800) {
-            criteria.push(chunk);
-          }
+          if (chunk.length > 50 && chunk.length < 800) criteria.push(chunk);
         }
       });
-      
       return [...new Set(criteria)].slice(0, 10);
     }
 
     function parseFormQuestions(text) {
       if (!text) return [];
-      
       const questions = [];
       const lines = text.split(/\n/).map(s => s.trim()).filter(Boolean);
-      
-      // Padrões de perguntas
-      const questionPatterns = [
-        /^\d+[\.\)]\s*(.+)/,
-        /^[A-Z][^:]{3,100}:\s*$/,
-        /\?$/
-      ];
-      
+      const questionPatterns = [/^\d+[\.\)]\s*(.+)/, /^[A-Z][^:]{3,100}:\s*$/, /\?$/];
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         let isQuestion = false;
         let questionText = line;
-        
-        // Verifica se é uma pergunta
         for (let pattern of questionPatterns) {
           if (pattern.test(line)) {
             isQuestion = true;
@@ -271,17 +242,11 @@
             break;
           }
         }
-        
-        // Verifica palavras-chave de perguntas
         if (!isQuestion) {
           const keywords = /^(título|resumo|objetivo|metodologia|público|justificativa|resultado|impacto|meta|indicador|atividade|cronograma|orçamento)/i;
-          if (keywords.test(line)) {
-            isQuestion = true;
-          }
+          if (keywords.test(line)) isQuestion = true;
         }
-        
         if (isQuestion) {
-          // Extrai limite se houver
           let limit = null;
           const limitMatch = line.match(/\b(?:até\s*)?(\d{2,5})\s*(caracteres?|palavras?)\b/i);
           if (limitMatch) {
@@ -290,15 +255,9 @@
               type: limitMatch[2].toLowerCase().startsWith('caracter') ? 'chars' : 'words'
             };
           }
-          
-          questions.push({
-            question: questionText.replace(/[:?]*$/, '').trim(),
-            limit: limit
-          });
+          questions.push({ question: questionText.replace(/[:?]*$/, '').trim(), limit });
         }
       }
-      
-      // Remove duplicatas
       const seen = new Set();
       return questions.filter(q => {
         const key = q.question.toLowerCase();
@@ -311,171 +270,68 @@
     /* ========= PARSER JSON ROBUSTO ========= */
     function parseJSONResponse(raw) {
       if (!raw) throw new Error('Resposta vazia');
-      
-      console.log('Resposta bruta:', raw.substring(0, 500));
-      
-      // Remove marcadores de código
       let text = raw.trim();
-      if (text.startsWith('```json')) {
-        text = text.replace(/^```json\s*/i, '');
-      }
-      if (text.startsWith('```')) {
-        text = text.replace(/^```\s*/, '');
-      }
-      if (text.endsWith('```')) {
-        text = text.replace(/```\s*$/, '');
-      }
-      
-      // Tenta parse direto primeiro
+      if (text.startsWith('```json')) text = text.replace(/^```json\s*/i, '');
+      if (text.startsWith('```')) text = text.replace(/^```\s*/, '');
+      if (text.endsWith('```')) text = text.replace(/```\s*$/, '');
       try {
         const parsed = JSON.parse(text);
         if (parsed.filled_form) return parsed;
         if (Array.isArray(parsed)) return { filled_form: parsed };
         return parsed;
-      } catch (e1) {
-        console.log('Parse direto falhou:', e1.message);
-      }
-      
-      // Tenta extrair JSON do meio do texto
+      } catch {}
       const jsonStart = text.indexOf('{');
       if (jsonStart >= 0) {
-        let depth = 0;
-        let inString = false;
-        let escape = false;
-        let jsonEnd = -1;
-        
+        let depth = 0, inString = false, escape = false, jsonEnd = -1;
         for (let i = jsonStart; i < text.length; i++) {
-          const char = text[i];
-          
-          if (escape) {
-            escape = false;
-            continue;
-          }
-          
-          if (char === '\\' && inString) {
-            escape = true;
-            continue;
-          }
-          
-          if (char === '"' && !escape) {
-            inString = !inString;
-            continue;
-          }
-          
+          const c = text[i];
+          if (escape) { escape = false; continue; }
+          if (c === '\\' && inString) { escape = true; continue; }
+          if (c === '"' && !escape) { inString = !inString; continue; }
           if (!inString) {
-            if (char === '{') depth++;
-            else if (char === '}') {
+            if (c === '{') depth++;
+            else if (c === '}') {
               depth--;
-              if (depth === 0) {
-                jsonEnd = i + 1;
-                break;
-              }
+              if (depth === 0) { jsonEnd = i + 1; break; }
             }
           }
         }
-        
         if (jsonEnd > jsonStart) {
-          try {
-            const jsonStr = text.substring(jsonStart, jsonEnd);
-            const parsed = JSON.parse(jsonStr);
-            if (parsed.filled_form) return parsed;
-            if (Array.isArray(parsed)) return { filled_form: parsed };
-            return parsed;
-          } catch (e2) {
-            console.log('Extração de JSON falhou:', e2.message);
-          }
+          const jsonStr = text.substring(jsonStart, jsonEnd);
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.filled_form) return parsed;
+          if (Array.isArray(parsed)) return { filled_form: parsed };
+          return parsed;
         }
       }
-      
       throw new Error('Não foi possível processar a resposta JSON');
     }
 
     /* ========= GERAÇÃO DO DOCX ========= */
     function generateDocx(data, meta) {
       const { Document, Paragraph, HeadingLevel, TextRun, AlignmentType } = docx;
-      
       const children = [];
-      
-      // Título
       children.push(
-        new Paragraph({
-          text: meta.title || 'Proposta - Formulário Preenchido',
-          heading: HeadingLevel.HEADING_1,
-          alignment: AlignmentType.CENTER
-        })
+        new Paragraph({ text: meta.title || 'Proposta - Formulário Preenchido', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER })
       );
-      
-      // Metadados
       if (meta.project) {
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({ text: 'Projeto: ', bold: true }),
-              new TextRun({ text: meta.project })
-            ]
-          })
-        );
+        children.push(new Paragraph({ children: [ new TextRun({ text: 'Projeto: ', bold: true }), new TextRun({ text: meta.project }) ] }));
       }
-      
       if (meta.partner) {
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({ text: 'Parceiro/Chamada: ', bold: true }),
-              new TextRun({ text: meta.partner })
-            ]
-          })
-        );
+        children.push(new Paragraph({ children: [ new TextRun({ text: 'Parceiro/Chamada: ', bold: true }), new TextRun({ text: meta.partner }) ] }));
       }
-      
-      children.push(
-        new Paragraph({
-          text: `Data: ${new Date().toLocaleDateString('pt-BR')}`,
-          spacing: { after: 400 }
-        })
-      );
-      
-      // Perguntas e respostas
+      children.push(new Paragraph({ text: `Data: ${new Date().toLocaleDateString('pt-BR')}`, spacing: { after: 400 } }));
       const questions = data.filled_form || [];
       questions.forEach((item, idx) => {
-        // Pergunta
-        children.push(
-          new Paragraph({
-            text: `${idx + 1}. ${item.question}`,
-            heading: HeadingLevel.HEADING_2,
-            spacing: { before: 400, after: 200 }
-          })
-        );
-        
-        // Limite (se houver)
+        children.push(new Paragraph({ text: `${idx + 1}. ${item.question}`, heading: HeadingLevel.HEADING_2, spacing: { before: 400, after: 200 } }));
         if (item.limit && item.limit.value) {
           const limitType = item.limit.type === 'chars' ? 'caracteres' : 'palavras';
-          children.push(
-            new Paragraph({
-              text: `Limite: ${item.limit.value} ${limitType}`,
-              italics: true,
-              color: '666666',
-              spacing: { after: 200 }
-            })
-          );
+          children.push(new Paragraph({ text: `Limite: ${item.limit.value} ${limitType}`, italics: true, color: '666666', spacing: { after: 200 } }));
         }
-        
-        // Resposta
         const answer = item.answer || '[Resposta não gerada]';
-        children.push(
-          new Paragraph({
-            text: answer,
-            spacing: { after: 400 }
-          })
-        );
+        children.push(new Paragraph({ text: answer, spacing: { after: 400 } }));
       });
-      
-      return new Document({
-        sections: [{
-          properties: {},
-          children: children
-        }]
-      });
+      return new Document({ sections: [{ properties: {}, children }] });
     }
 
     async function saveDocx(doc, filename) {
@@ -497,15 +353,10 @@
     
     async function handleFileUpload(inputEl, infoEl, processor) {
       const file = inputEl.files[0];
-      if (!file) {
-        infoEl.style.display = 'none';
-        return '';
-      }
-      
+      if (!file) { infoEl.style.display = 'none'; return ''; }
       infoEl.textContent = 'Lendo arquivo...';
       infoEl.style.display = 'block';
       infoEl.classList.remove('error');
-      
       try {
         const text = await processor(file);
         const sizeKB = (text.length / 1024).toFixed(1);
@@ -551,23 +402,18 @@
     /* ========= SUBMIT DO FORMULÁRIO ========= */
     $('#formTool').addEventListener('submit', async (e) => {
       e.preventDefault();
-      
       const statusEl = $('#status');
       const debugEl = $('#debug');
-      
-      // Reset UI
       hide(debugEl);
       clearProgress();
       statusEl.textContent = '';
       statusEl.classList.remove('error', 'success', 'warning');
       
-      // Validações
       if (!MARCO_TXT || !EDITAL_TXT || !FORM_TXT) {
         statusEl.textContent = 'Por favor, anexe todos os três arquivos obrigatórios.';
         statusEl.classList.add('error');
         return;
       }
-      
       const projectName = $('#projectName').value.trim();
       if (!projectName) {
         statusEl.textContent = 'Por favor, informe o nome do projeto.';
@@ -577,119 +423,71 @@
       
       try {
         $('#submitBtn').disabled = true;
-        
-        // Etapa 1: Processar dados
         updateProgress('📋 Processando formulário e extraindo perguntas...');
-        
         const questions = parseFormQuestions(FORM_TXT);
         const criteria = extractCriteria(EDITAL_TXT);
-        
-        console.log(`Extraídas ${questions.length} perguntas e ${criteria.length} critérios`);
-        
         if (questions.length === 0) {
           statusEl.textContent = '⚠️ Nenhuma pergunta identificada no formulário. Enviando texto completo...';
           statusEl.classList.add('warning');
         }
-        
-        // Prepara payload com todos os campos necessários
+
+        // Monta payload principal
         const payload = {
-          // Campos principais que o Make espera
           lang: $('#lang').value || 'pt-BR',
           project: projectName,
           partner: $('#partnerName').value.trim() || '',
           notes: $('#notes').value.trim() || '',
           outFile: $('#outFile').value.trim() || '',
-          
-          // Conteúdo dos arquivos (limitados para evitar timeout)
           marco_logico: MARCO_TXT.slice(0, 80000),
           edital: EDITAL_TXT.slice(0, 80000),
           form_text: FORM_TXT.slice(0, 80000),
-          
-          // Dados processados
           questions: questions,
           criteria_from_call: criteria,
-          
-          // Metadados adicionais
+          // Strings JSON para o Make mapear como texto sem quebrar o corpo
+          questions_json: JSON.stringify(questions),
+          criteria_json: JSON.stringify(criteria),
           timestamp: new Date().toISOString(),
-          version: '2.0'
+          version: '2.1'
         };
-        
-        // Debug do payload
-        console.log('Payload sendo enviado:', {
-          lang: payload.lang,
-          project: payload.project,
-          marco_logico_size: payload.marco_logico.length,
-          edital_size: payload.edital.length,
-          form_text_size: payload.form_text.length,
-          questions_count: payload.questions.length,
-          criteria_count: payload.criteria_from_call.length
-        });
-        
-        // Etapa 2: Enviar ao webhook
+
         updateProgress('🚀 Enviando dados ao servidor...');
-        
         const response = await fetch(WEBHOOK_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json, text/plain, */*'
-          },
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/plain, */*' },
           body: JSON.stringify(payload)
         });
-        
         const responseText = await response.text();
-        
-        // Debug da resposta
-        debugEl.textContent = `=== RESPOSTA DO SERVIDOR ===
-Status: ${response.status} ${response.statusText}
-Content-Type: ${response.headers.get('content-type') || 'não especificado'}
-Tamanho: ${responseText.length} caracteres
 
-Primeiros 1000 caracteres:
-${responseText.substring(0, 1000)}
-${responseText.length > 1000 ? '\n...(truncado)' : ''}`;
+        const head = [
+          '=== RESPOSTA DO SERVIDOR ===',
+          `Status: ${response.status} ${response.statusText}`,
+          `Content-Type: ${response.headers.get('content-type') || 'não especificado'}`,
+          `Tamanho: ${responseText.length} caracteres`,
+          '',
+          'Primeiros 1000 caracteres:',
+          responseText.substring(0, 1000),
+          responseText.length > 1000 ? '\n...(truncado)' : ''
+        ].join('\n');
+        debugEl.textContent = head;
         show(debugEl);
-        
-        if (!response.ok) {
-          throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        // Etapa 3: Processar resposta
+        if (!response.ok) throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
+
         updateProgress('🤖 Processando resposta da IA...');
-        
         const data = parseJSONResponse(responseText);
-        
-        // Verifica se há erro na resposta
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        
-        // Verifica se há respostas
+        if (data.error) throw new Error(data.error);
         if (!data.filled_form || !Array.isArray(data.filled_form) || data.filled_form.length === 0) {
           throw new Error('Nenhuma resposta foi gerada. Verifique se os arquivos estão corretos.');
         }
-        
-        // Etapa 4: Gerar DOCX
+
         updateProgress('📄 Gerando documento Word...');
-        
-        const meta = {
-          title: 'Proposta - Formulário Preenchido',
-          project: projectName,
-          partner: $('#partnerName').value.trim()
-        };
-        
+        const meta = { title: 'Proposta - Formulário Preenchido', project: projectName, partner: $('#partnerName').value.trim() };
         const doc = generateDocx(data, meta);
-        
-        const filename = $('#outFile').value.trim() || 
-          `${projectName.replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_')}_${$('#lang').value}.docx`;
-        
+        const filename = $('#outFile').value.trim() || `${projectName.replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_')}_${$('#lang').value}.docx`;
         await saveDocx(doc, filename);
-        
-        // Sucesso!
+
         clearProgress();
-        statusEl.textContent = `✅ Documento gerado com sucesso! ${data.filled_form.length} perguntas respondidas.`;
+        statusEl.textContent = `✅ Documento gerado com sucesso. ${data.filled_form.length} perguntas respondidas.`;
         statusEl.classList.add('success');
-        
       } catch (error) {
         console.error('Erro completo:', error);
         statusEl.textContent = `❌ Erro: ${error.message}`;
