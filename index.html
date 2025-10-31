@@ -254,14 +254,36 @@
       }).slice(0,100);
     }
 
-    /* ========= PARSER JSON ROBUSTO ========= */
+    /* ========= PARSER JSON ULTRA-ROBUSTO ========= */
+    // Escapa \n/\r/\t *dentro* de strings JSON (caso o modelo tenha inserido quebras reais)
+    function escapeNewlinesInsideStrings(str){
+      let res = '';
+      let inStr = false, esc = false;
+      for(let i=0;i<str.length;i++){
+        let ch = str[i];
+        if(esc){ res += ch; esc = false; continue; }
+        if(ch === '\\'){ res += ch; esc = true; continue; }
+        if(ch === '"'){ inStr = !inStr; res += ch; continue; }
+        if(inStr){
+          if(ch === '\n'){ res += '\\n'; continue; }
+          if(ch === '\r'){ res += '\\r'; continue; }
+          if(ch === '\t'){ res += '\\t'; continue; }
+        }
+        res += ch;
+      }
+      return res;
+    }
+
     function parseJSONResponse(raw){
       if(!raw) throw new Error('Resposta vazia');
 
-      // força string, remove BOM e espaços
-      let text = String(raw).replace(/^\uFEFF/, '').trim();
+      let text = String(raw)
+        .replace(/^\uFEFF/, '')
+        // remove caracteres invisíveis comuns
+        .replace(/[\u200B\u200C\u200D\u2060]/g,'')
+        .trim();
 
-      // remove TODAS as cercas ```...``` mantendo apenas o JSON interno
+      // remove blocos cercados por ```...``` mantendo apenas o JSON interno
       text = text.replace(/```[\s\S]*?```/g, (m)=>{
         const s = m.indexOf('{');
         const e = m.lastIndexOf('}');
@@ -271,8 +293,9 @@
       // remove marcas restantes de cerca
       text = text.replace(/```json|```/gi, '').trim();
 
-      // normaliza separadores unicode que quebram o JSON.parse
-      text = text.replace(/\u2028|\u2029/g, ' ').trim();
+      // normaliza separadores unicode e escapa novas linhas DENTRO de strings
+      text = text.replace(/\u2028|\u2029/g, ' ');
+      text = escapeNewlinesInsideStrings(text).trim();
 
       // tentativa direta
       try{
@@ -280,7 +303,7 @@
         return Array.isArray(j) ? { filled_form: j } : j;
       }catch(_){}
 
-      // varredura por bloco JSON balanceado do primeiro '{' ao fechamento
+      // varredura por bloco JSON balanceado
       const start = text.indexOf('{');
       const last  = text.lastIndexOf('}');
       if (start !== -1 && last !== -1 && last > start){
@@ -301,7 +324,8 @@
           }
         }
         if (end !== -1){
-          const core = text.slice(start, end);
+          let core = text.slice(start, end);
+          core = escapeNewlinesInsideStrings(core);
           const obj  = JSON.parse(core);
           return Array.isArray(obj) ? { filled_form: obj } : obj;
         }
@@ -309,7 +333,8 @@
 
       // último recurso: corta após último '}' e tenta
       if (last !== -1){
-        const maybe = text.slice(0, last + 1);
+        let maybe = text.slice(0, last + 1);
+        maybe = escapeNewlinesInsideStrings(maybe);
         const obj = JSON.parse(maybe);
         return Array.isArray(obj) ? { filled_form: obj } : obj;
       }
@@ -464,7 +489,7 @@
           marco_esc8k:  capAndEscape(MARCO_TXT, MAX_CHARS_PER_BLOCK),
           edital_esc8k: capAndEscape(EDITAL_TXT,MAX_CHARS_PER_BLOCK),
           timestamp: new Date().toISOString(),
-          version: '2.7'
+          version: '2.8'
         };
 
         updateProgress('Enviando dados ao servidor...');
@@ -516,8 +541,5 @@
   </script>
 </body>
 </html>
-
-
-
 
 
