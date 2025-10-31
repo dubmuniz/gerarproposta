@@ -107,10 +107,8 @@
   </main>
 
   <script>
-    /* ========= CONFIG ========= */
     const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
 
-    /* ========= HELPERS ========= */
     const $ = s => document.querySelector(s);
     const show = el => el.classList.add('show');
     const hide = el => el.classList.remove('show');
@@ -139,7 +137,6 @@
     function updateProgress(msg){ const p=$('#progress'); p.textContent=msg; show(p); }
     function clearProgress(){ hide($('#progress')); }
 
-    /* ========= FILE READERS ========= */
     async function readPDF(file){
       try{
         const arr = await file.arrayBuffer();
@@ -189,7 +186,6 @@
       throw new Error('Formato de arquivo não suportado');
     }
 
-    /* ========= PROCESSAMENTO ========= */
     function cleanEdital(text){
       if(!text) return '';
       let s = ' ' + text + ' ';
@@ -218,8 +214,7 @@
       if(!text) return [];
       const questions=[];
       const lines = text.split(/\n/).map(s=>s.trim()).filter(Boolean);
-      const questionPatterns=[/^\d+[\.\)]\s*(.+)/,/^[A-Z][^:]{3,100}:\s*$/,/\\?$/]; // placeholder, ajustado abaixo
-      // corrigir padrão final para interrogação literal
+      const questionPatterns=[/^\d+[\.\)]\s*(.+)/,/^[A-Z][^:]{3,100}:\s*$/,/\\?$/];
       questionPatterns[2] = /\?$/;
       for(let i=0;i<lines.length;i++){
         const line=lines[i];
@@ -291,7 +286,6 @@
       throw new Error('Não foi possível processar a resposta JSON');
     }
 
-    /* ========= DOCX ========= */
     function generateDocx(data, meta){
       const { Document, Paragraph, HeadingLevel, TextRun, AlignmentType } = docx;
       const children=[];
@@ -323,7 +317,6 @@
       URL.revokeObjectURL(url);
     }
 
-    /* ========= FILE HANDLERS ========= */
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
     async function handleFileUpload(inputEl, infoEl, processor){
       const file=inputEl.files[0];
@@ -346,7 +339,6 @@
     $('#editalFile').addEventListener('change', async()=>{ const raw=await handleFileUpload($('#editalFile'),$('#editalInfo'),readAny); EDITAL_TXT=cleanEdital(raw); });
     $('#formFile').addEventListener('change', async()=>{ FORM_TXT = await handleFileUpload($('#formFile'),$('#formInfo'),readAny); });
 
-    // Nome auto
     $('#lang').addEventListener('change',()=>{
       if($('#outFile').value.trim()) return;
       const lang=$('#lang').value;
@@ -362,7 +354,6 @@
       $('#outFile').value=`${safe}_${lang}.docx`;
     });
 
-    /* ========= SUBMIT ========= */
     $('#formTool').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const statusEl=$('#status'), debugEl=$('#debug');
@@ -388,32 +379,33 @@
           statusEl.classList.add('warning');
         }
 
-        // Redução e escape para evitar 400 no Make/Claude
-        const MAX_CHARS_PER_BLOCK = 25000;
+        // Limite reduzido para evitar 400 no Make/Claude
+        const MAX_CHARS_PER_BLOCK = 8000;
+
         const payload = {
           lang: $('#lang').value || 'pt-BR',
           project: projectName,
           partner: $('#partnerName').value.trim() || '',
           notes: $('#notes').value.trim() || '',
           outFile: $('#outFile').value.trim() || '',
-          // textos brutos recortados
+          // recortes brutos se você quiser inspecionar no webhook
           marco_logico: MARCO_TXT.slice(0, MAX_CHARS_PER_BLOCK),
           edital: EDITAL_TXT.slice(0, MAX_CHARS_PER_BLOCK),
           form_text: FORM_TXT.slice(0, MAX_CHARS_PER_BLOCK),
           // listas detectadas
           questions,
           criteria_from_call: criteria,
-          // strings JSON compactas
+          // JSONs curtos
           questions_json: JSON.stringify(questions||[]),
           criteria_json: JSON.stringify(criteria||[]),
-          // flags de extração pela IA
+          // flags para IA extrair quando vier []
           extract_if_empty: { questions: questions.length===0, criteria: criteria.length===0 },
-          // versões escapadas para body raw 1-linha
-          marco_escaped: capAndEscape(MARCO_TXT, MAX_CHARS_PER_BLOCK),
-          edital_escaped: capAndEscape(EDITAL_TXT, MAX_CHARS_PER_BLOCK),
-          form_escaped:  capAndEscape(FORM_TXT,  MAX_CHARS_PER_BLOCK),
+          // versões escapadas específicas para Body 1-linha
+          form_esc8k:   capAndEscape(FORM_TXT,  MAX_CHARS_PER_BLOCK),
+          marco_esc8k:  capAndEscape(MARCO_TXT, MAX_CHARS_PER_BLOCK),
+          edital_esc8k: capAndEscape(EDITAL_TXT,MAX_CHARS_PER_BLOCK),
           timestamp: new Date().toISOString(),
-          version: '2.3'
+          version: '2.4'
         };
 
         updateProgress('Enviando dados ao servidor...');
