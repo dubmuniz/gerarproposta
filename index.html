@@ -39,7 +39,7 @@
 <body>
   <header class="wrap">
     <h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
-    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche as respostas respeitando critérios, requisitos e limites de palavras ou caracteres.</p>
+    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche respostas respeitando critérios, requisitos e limites.</p>
   </header>
 
   <main class="wrap">
@@ -74,8 +74,8 @@
       </div>
 
       <div>
-        <label>Observações adicionais para o preenchimento</label>
-        <textarea id="notes" placeholder="Pontos de ênfase, palavras que devem aparecer, público prioritário, etc."></textarea>
+        <label>Observações adicionais</label>
+        <textarea id="notes" placeholder="Pontos de ênfase, palavras-chave, público prioritário, etc."></textarea>
       </div>
 
       <div class="two">
@@ -86,7 +86,7 @@
             <option value="es">Español (es)</option>
             <option value="en">English (en)</option>
           </select>
-          <div class="muted">O Make enviará este valor para o Claude</div>
+          <div class="muted">Enviado ao Claude pelo Make</div>
         </div>
         <div>
           <label>Arquivo DOCX gerado</label>
@@ -101,12 +101,15 @@
   </main>
 
   <script>
-    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+    /* ========= CONFIG ========= */
+    const WEBHOOK_URL = 'https://hook.us2.make.com/SEU_WEBHOOK_AQUI';
 
+    /* ========= HELPERS ========= */
     const $ = s => document.querySelector(s);
     const show = el => el.classList.remove('hidden');
     const hide = el => el.classList.add('hidden');
     const sanitize = s => (s==null?'':String(s)
+      .replace(/^\uFEFF/, '')
       .replace(/\uFEFF/g,'')
       .replace(/[\u0000-\u001F\u007F-\u009F]/g,'')
       .replace(/\r?\n/g,' ')
@@ -119,11 +122,12 @@
       return { ok: resp.ok, status: resp.status, statusText: resp.statusText, headers: resp.headers, text };
     }
 
+    /* ========= FILE READERS ========= */
     async function readPDF(file){
       const arr = await file.arrayBuffer();
       pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       const pdf = await pdfjsLib.getDocument({data:arr}).promise;
-      let text='';
+      let text=''; 
       for(let p=1;p<=pdf.numPages;p++){
         const pg=await pdf.getPage(p);
         const tc=await pg.getTextContent();
@@ -161,6 +165,7 @@
       return sanitize(await file.text());
     }
 
+    /* ========= EDITAL: LIMPEZA E EXTRAÇÕES ========= */
     function cleanEdital(t){
       if(!t) return '';
       let s=' '+t+' ';
@@ -222,6 +227,52 @@
       }).slice(0,80);
     }
 
+    /* ========= JSON ROBUST PARSER ========= */
+    function stripFencesAndBOM(s){
+      if(!s) return '';
+      let t = String(s).replace(/^\uFEFF/, '').trim();
+      if(t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i,'');
+      if(t.endsWith('```')) t = t.slice(0, -3);
+      return t.trim();
+    }
+    function extractFirstJSONObject(raw, keyHints){
+      const s = stripFencesAndBOM(raw);
+      const n = s.length;
+      let inStr = false, esc = false, depth = 0, start = -1;
+      for(let i=0;i<n;i++){
+        const c = s[i];
+        if(inStr){
+          if(esc){ esc=false; continue; }
+          if(c==='\\'){ esc=true; continue; }
+          if(c==='"'){ inStr=false; continue; }
+          continue;
+        }else{
+          if(c === '"'){ inStr=true; continue; }
+          if(c === '{'){
+            if(depth === 0) start = i;
+            depth++; continue;
+          }
+          if(c === '}'){
+            if(depth>0) depth--;
+            if(depth===0 && start>=0){
+              const candidate = s.slice(start, i+1).trim();
+              try{
+                const obj = JSON.parse(candidate);
+                if(Array.isArray(keyHints) && keyHints.length){
+                  const hay = candidate.toLowerCase();
+                  const ok = keyHints.some(k => hay.includes(String(k).toLowerCase()));
+                  if(!ok) continue;
+                }
+                return obj;
+              }catch(_){ /* continua */ }
+            }
+          }
+        }
+      }
+      try { return JSON.parse(s); } catch(_){ return null; }
+    }
+
+    /* ========= DOCX ========= */
     const H = docx.HeadingLevel;
     const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
     const H1 = (t)=> P(t,{heading:H.HEADING_1});
@@ -229,9 +280,10 @@
     function docFromFilled(filled, meta){
       const children = [];
       children.push(H1(meta?.title || 'Proposta — Respostas do Formulário'));
-      if(meta?.project) { children.push(P('Projeto: ' + meta.project)); }
-      if(meta?.partner) { children.push(P('Chamada: ' + meta.partner)); }
+      if(meta?.project) children.push(P('Projeto: ' + meta.project));
+      if(meta?.partner) children.push(P('Chamada: ' + meta.partner));
       children.push(P(''));
+
       filled.forEach((item,idx)=>{
         const head = `${idx+1}. ${item.question}`;
         children.push(H2(head));
@@ -242,6 +294,7 @@
         children.push(P(item.answer || ''));
         children.push(P(''));
       });
+
       return new docx.Document({ sections:[{properties:{},children}] });
     }
     async function saveDocx(doc, filename){
@@ -251,6 +304,7 @@
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
 
+    /* ========= UI FILE HOOKS ========= */
     async function handleFile(inputEl, infoEl, reader){
       const f = inputEl.files[0];
       if(!f){ infoEl.style.display='none'; return ''; }
@@ -277,7 +331,7 @@
       FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
     });
 
-    // sugestão automática do nome do arquivo conforme idioma
+    // Sugestão automática do nome do arquivo conforme idioma, se vazio
     $('#lang').addEventListener('change', ()=>{
       const cur = ($('#outFile').value||'').trim();
       if(cur) return;
@@ -287,6 +341,7 @@
       $('#outFile').value = `${base}_${suf}.docx`;
     });
 
+    /* ========= SUBMIT ========= */
     document.getElementById('formTool').addEventListener('submit', async (e)=>{
       e.preventDefault();
       hide($('#debug'));
@@ -308,7 +363,7 @@
         const criteria = extractCriteria(EDITAL_TXT);
 
         const payload = {
-          lang: ($('#lang').value||'pt-BR').trim(),            // agora dropdown
+          lang: ($('#lang').value||'pt-BR').trim(),
           project: ($('#projectName').value||'').trim(),
           partner: ($('#partnerName').value||'').trim(),
           outFile: ($('#outFile').value||'').trim(),
@@ -316,8 +371,8 @@
           marco_logico: MARCO_TXT.slice(0,120000),
           edital: EDITAL_TXT.slice(0,120000),
           form_text: FORM_TXT.slice(0,120000),
-          questions: questions,
-          criteria_from_call: criteria
+          questions: questions,              // [{question, limit:{value,unit}}]
+          criteria_from_call: criteria       // array de trechos curtos
         };
 
         statusEl.textContent = 'Enviando ao backend...';
@@ -335,17 +390,14 @@ ${text.slice(0,2000)}`;
         show($('#debug'));
 
         if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
-
-        let resp = text.trim();
+        const resp = text.trim();
         if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
 
-        let data;
-        try{ data = JSON.parse(resp); }
-        catch{
-          const i = resp.indexOf('{"filled_form"');
-          if(i>=0) data = JSON.parse(resp.slice(i));
+        // ==== PARSE ROBUSTO ====
+        const data = extractFirstJSONObject(resp, ['"filled_form"','filled_form']);
+        if(!data || !Array.isArray(data.filled_form)){
+          throw new Error('Resposta inválida do backend. Preview: ' + resp.slice(0,300));
         }
-        if(!data || !Array.isArray(data.filled_form)) throw new Error('Resposta inválida do backend');
 
         const meta = {
           title: 'Proposta — Formulário Preenchido',
@@ -353,7 +405,7 @@ ${text.slice(0,2000)}`;
           partner: payload.partner
         };
         const doc = docFromFilled(data.filled_form, meta);
-        const fname = payload.outFile || 'Proposta_Preenchida.docx';
+        const fname = payload.outFile || (payload.project ? (payload.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_') + '_' + payload.lang + '.docx') : 'Proposta_Preenchida.docx');
         await saveDocx(doc, fname);
 
         statusEl.textContent='✓ DOCX gerado com sucesso';
@@ -369,3 +421,4 @@ ${text.slice(0,2000)}`;
   </script>
 </body>
 </html>
+
