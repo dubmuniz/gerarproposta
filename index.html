@@ -33,7 +33,7 @@
     .debug{background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0;font-size:12px;font-family:monospace;max-height:260px;overflow:auto;white-space:pre-wrap}
     .hidden{display:none}
     .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .muted{color:var(--muted);font-size:12px}
+    .muted{color:#667085;font-size:12px}
   </style>
 </head>
 <body>
@@ -127,7 +127,7 @@
       const arr = await file.arrayBuffer();
       pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       const pdf = await pdfjsLib.getDocument({data:arr}).promise;
-      let text=''; 
+      let text='';
       for(let p=1;p<=pdf.numPages;p++){
         const pg=await pdf.getPage(p);
         const tc=await pg.getTextContent();
@@ -227,7 +227,7 @@
       }).slice(0,80);
     }
 
-    /* ========= JSON ROBUST PARSER ========= */
+    /* ========= JSON ROBUST PARSER (OBJETO OU ARRAY) ========= */
     function stripFencesAndBOM(s){
       if(!s) return '';
       let t = String(s).replace(/^\uFEFF/, '').trim();
@@ -235,11 +235,54 @@
       if(t.endsWith('```')) t = t.slice(0, -3);
       return t.trim();
     }
-    function extractFirstJSONObject(raw, keyHints){
+    function extractFirstJSONValue(raw, keyHints){
       const s = stripFencesAndBOM(raw);
       const n = s.length;
-      let inStr = false, esc = false, depth = 0, start = -1;
+
+      // tenta buscar objeto com chave esperada (ex.: "filled_form")
+      if(Array.isArray(keyHints) && keyHints.length){
+        const idx = s.toLowerCase().indexOf(String(keyHints[0]).toLowerCase());
+        if(idx>=0){
+          // volta até o '{' mais próximo antes
+          for(let j=idx;j>=0;j--){
+            if(s[j]==='{'){
+              const obj = extractBalancedFrom(s, j, '{','}');
+              if(obj) return obj;
+              break;
+            }
+          }
+        }
+      }
+
+      // busca primeiro objeto
       for(let i=0;i<n;i++){
+        const c = s[i];
+        if(c==='{'){
+          const obj = extractBalancedFrom(s, i, '{','}');
+          if(obj) return obj;
+        }
+        if(c==='['){
+          const arr = extractBalancedFrom(s, i, '[',']');
+          if(arr){
+            // se vier array no topo, embrulha em {filled_form: arr}
+            try{
+              const parsed = JSON.parse(arr);
+              if(Array.isArray(parsed)) return { filled_form: parsed };
+            }catch(_){}
+          }
+        }
+      }
+
+      // fallback: parse direto
+      try{
+        const direct = JSON.parse(s);
+        if(Array.isArray(direct)) return { filled_form: direct };
+        return direct;
+      }catch(_){ return null; }
+    }
+    function extractBalancedFrom(s, startIndex, openCh, closeCh){
+      let inStr=false, esc=false, depth=0;
+      for(let i=startIndex;i<s.length;i++){
         const c = s[i];
         if(inStr){
           if(esc){ esc=false; continue; }
@@ -248,28 +291,29 @@
           continue;
         }else{
           if(c === '"'){ inStr=true; continue; }
-          if(c === '{'){
-            if(depth === 0) start = i;
-            depth++; continue;
-          }
-          if(c === '}'){
-            if(depth>0) depth--;
-            if(depth===0 && start>=0){
-              const candidate = s.slice(start, i+1).trim();
+          if(c === openCh){
+            depth++;
+          }else if(c === closeCh){
+            depth--;
+            if(depth===0){
+              const candidate = s.slice(startIndex, i+1).trim();
               try{
-                const obj = JSON.parse(candidate);
-                if(Array.isArray(keyHints) && keyHints.length){
-                  const hay = candidate.toLowerCase();
-                  const ok = keyHints.some(k => hay.includes(String(k).toLowerCase()));
-                  if(!ok) continue;
-                }
-                return obj;
-              }catch(_){ /* continua */ }
+                const parsed = JSON.parse(candidate);
+                // retorna string JSON parseada já (objeto/array)
+                return parsed;
+              }catch(_){
+                // se falhar, tenta limpar lixo pós-json comum
+                try{
+                  // remove caracteres após o último fechamento
+                  const cleaned = candidate.replace(/}\s*[\s\S]*$/, '}').replace(/]\s*[\s\S]*$/, ']');
+                  return JSON.parse(cleaned);
+                }catch(__){ return null; }
+              }
             }
           }
         }
       }
-      try { return JSON.parse(s); } catch(_){ return null; }
+      return null;
     }
 
     /* ========= DOCX ========= */
@@ -283,7 +327,6 @@
       if(meta?.project) children.push(P('Projeto: ' + meta.project));
       if(meta?.partner) children.push(P('Chamada: ' + meta.partner));
       children.push(P(''));
-
       filled.forEach((item,idx)=>{
         const head = `${idx+1}. ${item.question}`;
         children.push(H2(head));
@@ -294,7 +337,6 @@
         children.push(P(item.answer || ''));
         children.push(P(''));
       });
-
       return new docx.Document({ sections:[{properties:{},children}] });
     }
     async function saveDocx(doc, filename){
@@ -331,7 +373,7 @@
       FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
     });
 
-    // Sugestão automática do nome do arquivo conforme idioma, se vazio
+    // Sugere nome conforme idioma quando vazio
     $('#lang').addEventListener('change', ()=>{
       const cur = ($('#outFile').value||'').trim();
       if(cur) return;
@@ -393,8 +435,11 @@ ${text.slice(0,2000)}`;
         const resp = text.trim();
         if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
 
-        // ==== PARSE ROBUSTO ====
-        const data = extractFirstJSONObject(resp, ['"filled_form"','filled_form']);
+        // ==== PARSE ROBUSTO OBJ/ARRAY SEMPRE ====
+        const parsed = extractFirstJSONValue(resp, ['"filled_form"','filled_form']);
+        if(!parsed) throw new Error('Não foi possível localizar JSON válido na resposta.');
+        const data = Array.isArray(parsed.filled_form) ? parsed : (Array.isArray(parsed) ? {filled_form: parsed} : parsed);
+
         if(!data || !Array.isArray(data.filled_form)){
           throw new Error('Resposta inválida do backend. Preview: ' + resp.slice(0,300));
         }
@@ -421,5 +466,6 @@ ${text.slice(0,2000)}`;
   </script>
 </body>
 </html>
+
 
 
