@@ -43,7 +43,7 @@
 <body>
   <header class="wrap">
     <h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
-    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche respostas respeitando critérios, requisitos e limites.</p>
+    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário, a IA preenche respostas respeitando critérios, requisitos e limites.</p>
   </header>
 
   <main class="wrap">
@@ -73,7 +73,7 @@
         </div>
         <div>
           <label>Parceiro / Chamada</label>
-          <input id="partnerName" type="text" placeholder="Ex: Floresta Viva — FUNBIO / BNDES">
+          <input id="partnerName" type="text" placeholder="Ex: Floresta Viva, FUNBIO, BNDES">
         </div>
       </div>
 
@@ -107,8 +107,10 @@
   </main>
 
   <script>
+    /* ========= CONFIG ========= */
     const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
 
+    /* ========= HELPERS ========= */
     const $ = s => document.querySelector(s);
     const show = el => el.classList.add('show');
     const hide = el => el.classList.remove('show');
@@ -137,6 +139,7 @@
     function updateProgress(msg){ const p=$('#progress'); p.textContent=msg; show(p); }
     function clearProgress(){ hide($('#progress')); }
 
+    /* ========= FILE READERS ========= */
     async function readPDF(file){
       try{
         const arr = await file.arrayBuffer();
@@ -186,6 +189,7 @@
       throw new Error('Formato de arquivo não suportado');
     }
 
+    /* ========= PROCESSAMENTO ========= */
     function cleanEdital(text){
       if(!text) return '';
       let s = ' ' + text + ' ';
@@ -250,42 +254,69 @@
       }).slice(0,100);
     }
 
+    /* ========= PARSER JSON ROBUSTO ========= */
     function parseJSONResponse(raw){
       if(!raw) throw new Error('Resposta vazia');
-      let text = raw.trim();
-      if(text.startsWith('```json')) text=text.replace(/^```json\s*/i,'');
-      if(text.startsWith('```')) text=text.replace(/^```\s*/,'');
-      if(text.endsWith('```')) text=text.replace(/```\s*$/,'');
+
+      // Limpeza inicial, remoção de cercas ```...``` e separadores unicode
+      let text = String(raw).replace(/^\uFEFF/, '').trim();
+      if (/^```/m.test(text)) {
+        const first = text.indexOf('```');
+        const second = text.indexOf('```', first + 3);
+        if (second > first) text = text.slice(first + 3, second);
+      }
+      text = text.replace(/\u2028|\u2029/g, ' ').trim();
+
+      // Tenta parse direto
       try{
-        const parsed = JSON.parse(text);
-        if(parsed.filled_form) return parsed;
-        if(Array.isArray(parsed)) return { filled_form: parsed };
-        return parsed;
+        const direct = JSON.parse(text);
+        if (direct && (direct.filled_form || Array.isArray(direct))) {
+          return Array.isArray(direct) ? { filled_form: direct } : direct;
+        }
       }catch(_){}
-      const jsonStart = text.indexOf('{');
-      if(jsonStart>=0){
-        let depth=0,inString=false,escape=false,jsonEnd=-1;
-        for(let i=jsonStart;i<text.length;i++){
+
+      // Extrai maior bloco JSON balanceado do primeiro '{' ao fechamento
+      const start = text.indexOf('{');
+      const last  = text.lastIndexOf('}');
+      if (start !== -1 && last !== -1 && last > start) {
+        let inStr=false, esc=false, depth=0, end=-1;
+        for(let i=start;i<=last;i++){
           const ch=text[i];
-          if(escape){ escape=false; continue; }
-          if(ch==='\\' && inString){ escape=true; continue; }
-          if(ch==='"' && !escape){ inString=!inString; continue; }
-          if(!inString){
-            if(ch==='{') depth++;
-            else if(ch==='}'){ depth--; if(depth===0){ jsonEnd=i+1; break; } }
+          if(esc){ esc=false; continue; }
+          if(inStr){
+            if(ch==='\\'){ esc=true; continue; }
+            if(ch==='"'){ inStr=false; continue; }
+            continue;
+          }
+          if(ch==='"'){ inStr=true; continue; }
+          if(ch==='{') depth++;
+          if(ch==='}'){
+            depth--;
+            if(depth===0){ end=i+1; break; }
           }
         }
-        if(jsonEnd>jsonStart){
-          const jsonStr=text.substring(jsonStart,jsonEnd);
-          const parsed=JSON.parse(jsonStr);
-          if(parsed.filled_form) return parsed;
-          if(Array.isArray(parsed)) return { filled_form: parsed };
-          return parsed;
+        if(end!==-1){
+          const core=text.slice(start,end);
+          try{
+            const obj=JSON.parse(core);
+            return Array.isArray(obj)?{filled_form:obj}:obj;
+          }catch(_){}
         }
       }
+
+      // Fallback: corta após último '}' e tenta novamente
+      if (last !== -1) {
+        const maybe = text.slice(0, last + 1);
+        try{
+          const obj = JSON.parse(maybe);
+          return Array.isArray(obj)?{filled_form:obj}:obj;
+        }catch(_){}
+      }
+
       throw new Error('Não foi possível processar a resposta JSON');
     }
 
+    /* ========= DOCX ========= */
     function generateDocx(data, meta){
       const { Document, Paragraph, HeadingLevel, TextRun, AlignmentType } = docx;
       const children=[];
@@ -317,6 +348,7 @@
       URL.revokeObjectURL(url);
     }
 
+    /* ========= FILE HANDLERS ========= */
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
     async function handleFileUpload(inputEl, infoEl, processor){
       const file=inputEl.files[0];
@@ -339,6 +371,7 @@
     $('#editalFile').addEventListener('change', async()=>{ const raw=await handleFileUpload($('#editalFile'),$('#editalInfo'),readAny); EDITAL_TXT=cleanEdital(raw); });
     $('#formFile').addEventListener('change', async()=>{ FORM_TXT = await handleFileUpload($('#formFile'),$('#formInfo'),readAny); });
 
+    // Nome automático
     $('#lang').addEventListener('change',()=>{
       if($('#outFile').value.trim()) return;
       const lang=$('#lang').value;
@@ -354,6 +387,7 @@
       $('#outFile').value=`${safe}_${lang}.docx`;
     });
 
+    /* ========= SUBMIT ========= */
     $('#formTool').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const statusEl=$('#status'), debugEl=$('#debug');
@@ -379,7 +413,7 @@
           statusEl.classList.add('warning');
         }
 
-        // Limite reduzido para evitar 400 no Make/Claude
+        // Teto por bloco para evitar 400 do Make/Claude
         const MAX_CHARS_PER_BLOCK = 8000;
 
         const payload = {
@@ -388,7 +422,7 @@
           partner: $('#partnerName').value.trim() || '',
           notes: $('#notes').value.trim() || '',
           outFile: $('#outFile').value.trim() || '',
-          // recortes brutos se você quiser inspecionar no webhook
+          // recortes brutos opcionais
           marco_logico: MARCO_TXT.slice(0, MAX_CHARS_PER_BLOCK),
           edital: EDITAL_TXT.slice(0, MAX_CHARS_PER_BLOCK),
           form_text: FORM_TXT.slice(0, MAX_CHARS_PER_BLOCK),
@@ -400,12 +434,12 @@
           criteria_json: JSON.stringify(criteria||[]),
           // flags para IA extrair quando vier []
           extract_if_empty: { questions: questions.length===0, criteria: criteria.length===0 },
-          // versões escapadas específicas para Body 1-linha
+          // versões escapadas específicas para Body 1-linha do Make
           form_esc8k:   capAndEscape(FORM_TXT,  MAX_CHARS_PER_BLOCK),
           marco_esc8k:  capAndEscape(MARCO_TXT, MAX_CHARS_PER_BLOCK),
           edital_esc8k: capAndEscape(EDITAL_TXT,MAX_CHARS_PER_BLOCK),
           timestamp: new Date().toISOString(),
-          version: '2.4'
+          version: '2.5'
         };
 
         updateProgress('Enviando dados ao servidor...');
@@ -457,6 +491,7 @@
   </script>
 </body>
 </html>
+
 
 
 
