@@ -1,212 +1,368 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Preenchimento Automático de Formulários — Humana Brasil</title>
-  <meta name="robots" content="noindex" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <meta charset="utf-8">
+  <title>Preenchimento de Formulários de Propostas — Humana Brasil</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
   <style>
-    :root{
-      --hb-green:#2e7d32; --hb-green-600:#1b5e20; --ink:#0b0d0e; --muted:#5f6b72; --bg:#f5f7f6; --white:#fff;
-      --radius:18px; --shadow:0 10px 20px rgba(0,0,0,.06); --shadow2:0 14px 28px rgba(0,0,0,.10);
-    }
+    :root{--green:#1E7E34;--ink:#1b1b1b;--bg:#fafafa;--muted:#667085}
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto; color:var(--ink); background:var(--bg)}
-    .wrap{max-width:920px;margin:0 auto;padding:28px 18px 48px}
-    header{display:grid;gap:8px;margin-bottom:18px}
-    .brand{display:inline-flex;align-items:center;gap:10px;color:var(--hb-green-600);font-weight:700}
-    .dot{width:10px;height:10px;background:var(--hb-green);border-radius:50%}
-    h1{margin:0;font-size:26px}
-    p.lead{margin:0;color:var(--muted)}
-    .card{background:var(--white);border:1px solid rgba(0,0,0,.06);box-shadow:var(--shadow);border-radius:var(--radius);padding:16px}
-    .grid{display:grid;gap:14px}
-    label{font-weight:600;font-size:14px;margin-bottom:6px;display:block}
-    input[type="file"], textarea, input[type="text"]{width:100%;padding:10px 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff}
-    textarea{min-height:110px;resize:vertical}
-    .row{display:grid;grid-template-columns:1fr;gap:12px}
-    @media(min-width:720px){.row{grid-template-columns:1fr 1fr}}
-    .hint{font-size:12px;color:var(--muted)}
-    .btn{appearance:none;border:0;background:var(--hb-green);color:#fff;padding:12px 16px;border-radius:12px;font-weight:700;cursor:pointer}
-    .btn:hover{box-shadow:var(--shadow2);transform:translateY(-1px)}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .status{margin-top:12px;font-size:13px;color:var(--muted)}
-    .result{margin-top:16px}
-    .pill{display:inline-block;background:rgba(46,125,50,.10);color:var(--hb-green-600);padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(46,125,50,.18)}
-    .code{white-space:pre-wrap;background:#fff;border:1px solid rgba(0,0,0,.06);padding:12px;border-radius:12px;font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:980px;margin:0 auto;padding:20px}
+    header{text-align:center;padding:20px 0}
+    h1{margin:0 0 6px;font-size:26px}
+    .lead{color:var(--muted);margin:0 0 12px}
+    form{background:#fff;border:1px solid #eee;border-radius:12px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    label{display:block;font-weight:600;margin:4px 0 6px}
+    input,textarea{width:100%;border:1px solid #d8dee4;border-radius:8px;padding:12px;font:inherit}
+    textarea{min-height:120px;resize:vertical}
+    .file-info{background:#f0f7f4;border-left:4px solid var(--green);padding:10px;border-radius:6px;margin-top:8px;font-size:13px;display:none}
+    .btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:14px}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .status{min-height:22px;color:var(--muted);margin:8px 0 0;font-size:14px}
+    .status.error{color:#d32f2f}
+    .status.success{color:#1E7E34}
+    .debug{background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0;font-size:12px;font-family:monospace;max-height:260px;overflow:auto;white-space:pre-wrap}
+    .hidden{display:none}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .muted{color:var(--muted);font-size:12px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="brand"><span class="dot"></span>Humana Brasil</div>
-      <h1>Preenchimento Automático de Formulários de Proposta</h1>
-      <p class="lead">Envie o Marco Lógico, o Edital e o Formulário. A IA gera respostas alinhadas a critérios e limites, e retorna DOCX.</p>
-    </header>
+  <header class="wrap">
+    <h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
+    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche as respostas respeitando critérios, requisitos e limites de palavras/caracteres.</p>
+  </header>
 
-    <div class="card">
-      <div class="grid">
+  <main class="wrap">
+    <form id="formTool" class="grid" novalidate>
+      <div>
+        <label>1) Marco Lógico (PDF, DOCX, TXT)</label>
+        <input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt" required>
+        <div id="marcoInfo" class="file-info"></div>
+      </div>
+
+      <div>
+        <label>2) Edital (PDF, DOCX, TXT)</label>
+        <input type="file" id="editalFile" accept=".pdf,.docx,.doc,.txt" required>
+        <div id="editalInfo" class="file-info"></div>
+      </div>
+
+      <div>
+        <label>3) Formulário da Proposta (DOCX, DOC, PDF, XLSX, XLS, TXT)</label>
+        <input type="file" id="formFile" accept=".docx,.doc,.pdf,.xlsx,.xls,.txt" required>
+        <div id="formInfo" class="file-info"></div>
+      </div>
+
+      <div class="two">
         <div>
-          <label for="logframe">1) Marco Lógico (DOCX, PDF, XLSX, XLS)</label>
-          <input id="logframe" type="file" accept=".doc,.docx,.pdf,.xlsx,.xls" />
-          <div class="hint">Base da proposta. Indicadores, produtos, atividades.</div>
+          <label>Nome do Projeto</label>
+          <input id="projectName" type="text" placeholder="Ex: Corredores Vivos Piabanha">
         </div>
-
         <div>
-          <label for="call">2) Edital da Chamada (PDF, DOCX, DOC)</label>
-          <input id="call" type="file" accept=".pdf,.doc,.docx" />
-          <div class="hint">Critérios de avaliação, requisitos, limites.</div>
-        </div>
-
-        <div>
-          <label for="form">3) Formulário a preencher (DOCX, DOC, PDF, XLSX, XLS)</label>
-          <input id="form" type="file" accept=".doc,.docx,.pdf,.xlsx,.xls" />
-          <div class="hint">Perguntas, campos, limites por seção.</div>
-        </div>
-
-        <div class="row">
-          <div>
-            <label for="notes">Observações opcionais</label>
-            <textarea id="notes" placeholder="Links, notas, delimitações específicas, palavras-chave obrigatórias."></textarea>
-          </div>
-          <div>
-            <label for="webhook">Webhook do Make</label>
-            <input id="webhook" type="text" placeholder="https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4" />
-            <div class="hint">Fluxo: HTML → Webhook (upload) → Claude → Webhook (retorno DOCX).</div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div>
-            <label><input id="enforceLimits" type="checkbox" checked /> Respeitar limites de palavras e caracteres</label>
-            <div class="hint">A IA busca limites no formulário ou edital e aplica cortes inteligentes.</div>
-          </div>
-          <div>
-            <label><input id="includeCitations" type="checkbox" checked /> Incluir citações e artigos do edital utilizados</label>
-            <div class="hint">A proposta cita requisitos e critérios quando pertinente.</div>
-          </div>
-        </div>
-
-        <button id="send" class="btn">Enviar e Gerar DOCX</button>
-        <div id="status" class="status"></div>
-
-        <div id="result" class="result" hidden>
-          <span class="pill">Retorno</span>
-          <div id="summary" class="code"></div>
-          <div id="downloadLinks"></div>
+          <label>Parceiro / Chamada</label>
+          <input id="partnerName" type="text" placeholder="Ex: Floresta Viva — FUNBIO / BNDES">
         </div>
       </div>
-    </div>
-  </div>
+
+      <div>
+        <label>Observações adicionais para o preenchimento</label>
+        <textarea id="notes" placeholder="Pontos de ênfase, palavras que devem aparecer, público prioritário, etc."></textarea>
+      </div>
+
+      <div class="two">
+        <div>
+          <label>Idioma de saída</label>
+          <input id="lang" type="text" value="pt-BR">
+        </div>
+        <div>
+          <label>Arquivo DOCX gerado</label>
+          <input id="outFile" type="text" placeholder="Ex: Proposta_Piabanha.docx">
+        </div>
+      </div>
+
+      <button id="submitBtn" class="btn" type="submit">Gerar Proposta DOCX</button>
+      <p id="status" class="status"></p>
+      <div id="debug" class="debug hidden"></div>
+    </form>
+  </main>
 
   <script>
-    async function fileToBase64(file){
-      if(!file) return null;
-      const buf = await file.arrayBuffer();
-      let binary = "";
-      const bytes = new Uint8Array(buf);
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize){
-        const chunk = bytes.subarray(i, i + chunkSize);
-        binary += String.fromCharCode.apply(null, chunk);
+    // ===== CONFIGURE AQUI SEU WEBHOOK DO MAKE =====
+    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+
+    // ===== HELPERS =====
+    const $ = s => document.querySelector(s);
+    const show = el => el.classList.remove('hidden');
+    const hide = el => el.classList.add('hidden');
+    const sanitize = s => (s==null?'':String(s)
+      .replace(/\uFEFF/g,'')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g,'')
+      .replace(/\r?\n/g,' ')
+      .replace(/\s+/g,' ')
+      .trim());
+
+    async function safeFetch(url, opts={}){
+      const resp = await fetch(url, opts);
+      const text = await resp.text();
+      return { ok: resp.ok, status: resp.status, statusText: resp.statusText, headers: resp.headers, text };
+    }
+
+    // ===== READERS =====
+    async function readPDF(file){
+      const arr = await file.arrayBuffer();
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const pdf = await pdfjsLib.getDocument({data:arr}).promise;
+      let text=''; 
+      for(let p=1;p<=pdf.numPages;p++){
+        const pg=await pdf.getPage(p);
+        const tc=await pg.getTextContent();
+        text += tc.items.map(i=>i.str).join(' ')+' ';
       }
-      return btoa(binary);
+      return sanitize(text);
     }
-
-    function safeName(name){ return name ? name.replace(/[^a-zA-Z0-9._-]/g, "_") : ""; }
-
-    async function postJSON(url, payload){
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
+    async function readDOCX(file){
+      const arr = await file.arrayBuffer();
+      const res = await mammoth.extractRawText({arrayBuffer:arr});
+      return sanitize(res.value);
+    }
+    async function readXLSX(file){
+      const arr = await file.arrayBuffer();
+      const wb = XLSX.read(arr, {type:'array'});
+      let out = '';
+      wb.SheetNames.forEach(name=>{
+        const ws = wb.Sheets[name];
+        const csv = XLSX.utils.sheet_to_csv(ws, {FS:'\t', RS:'\n'});
+        out += `\n[${name}]\n` + csv + '\n';
       });
-      if(!res.ok) throw new Error("HTTP " + res.status);
-      return res.json().catch(async ()=>{
-        const text = await res.text();
-        return { raw_text: text };
-      });
-    }
-
-    function downloadBase64(b64, filename, mime){
-      const byteChars = atob(b64);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], {type: mime || "application/octet-stream"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "arquivo.bin";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url), 2000);
-    }
-
-    document.getElementById("send").addEventListener("click", async ()=>{
-      const webhook = document.getElementById("webhook").value.trim();
-      const status = document.getElementById("status");
-      const result = document.getElementById("result");
-      const summary = document.getElementById("summary");
-      const downloadLinks = document.getElementById("downloadLinks");
-      result.hidden = true; summary.textContent = ""; downloadLinks.innerHTML = "";
-      if(!webhook){ status.textContent = "Informe o webhook do Make."; return; }
-
-      const fLog = document.getElementById("logframe").files[0];
-      const fCall = document.getElementById("call").files[0];
-      const fForm = document.getElementById("form").files[0];
-      if(!fLog || !fCall || !fForm){ status.textContent = "Envie os três arquivos."; return; }
-
-      status.textContent = "Lendo arquivos...";
       try{
-        const [bLog, bCall, bForm] = await Promise.all([
-          fileToBase64(fLog), fileToBase64(fCall), fileToBase64(fForm)
-        ]);
+        const first = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(first, {defval:'', raw:true});
+        const lines = json.slice(0,500).map(o=>Object.values(o).join(' | ')).join('\n');
+        out += '\n' + lines;
+      }catch(_){}
+      return sanitize(out);
+    }
+    async function readAny(file){
+      const name=(file.name||'').toLowerCase();
+      if(name.endsWith('.pdf')) return readPDF(file);
+      if(name.endsWith('.docx')||name.endsWith('.doc')) return readDOCX(file);
+      if(name.endsWith('.xlsx')||name.endsWith('.xls')) return readXLSX(file);
+      return sanitize(await file.text());
+    }
 
-        const payload = {
-          version: "1.0",
-          source: "humana-hub-formfill",
-          options: {
-            enforce_limits: document.getElementById("enforceLimits").checked,
-            include_citations: document.getElementById("includeCitations").checked,
-            return_format: ["docx","json","html"]
-          },
-          notes: document.getElementById("notes").value || "",
-          files: {
-            logframe: { filename: safeName(fLog.name), mimetype: fLog.type || null, base64: bLog },
-            call:     { filename: safeName(fCall.name), mimetype: fCall.type || null, base64: bCall },
-            form:     { filename: safeName(fForm.name), mimetype: fForm.type || null, base64: bForm }
-          },
-          client_meta: {
-            user_agent: navigator.userAgent,
-            ts: new Date().toISOString()
-          }
-        };
+    // ===== LIMPEZA DO EDITAL E EXTRAÇÕES =====
+    function cleanEdital(t){
+      if(!t) return '';
+      let s=' '+t+' ';
+      s=s.replace(/https?:\/\/\S+/gi,' ');
+      s=s.replace(/(\.{3,}|_{3,}|-{3,})/g,' ');
+      s=s.replace(/\b(frequently asked questions|faqs?|application process|apply now|grants? portal|character limits?|template|eligibility|budget guidelines?)\b[\s\S]{0,2000}/gi,' ');
+      s=s.replace(/\b(sumário|índice|conteúdo)\b[\s\S]{0,2000}/gi,' ');
+      s=s.replace(/^\s*\d+(\.\d+)*\s+[^\.]{3,80}\.{3,}\s*\d+\s*$/gim,' ');
+      s=s.replace(/[A-ZÁÂÃÀÉÊÍÓÔÕÚÇ]{4,}(?:\s+[A-ZÁÂÃÀÉÊÍÓÔÕÚÇ]{3,})+/g,m=>m.toLowerCase());
+      s=s.replace(/\s+/g,' ').trim();
+      return s.slice(0,120000);
+    }
 
-        status.textContent = "Enviando ao Make...";
-        const resp = await postJSON(webhook, payload);
-        status.textContent = "Processado.";
+    function extractCriteria(edital){
+      if(!edital) return [];
+      const s = ' '+edital+' ';
+      const crit = [];
+      const rx = /\b(crit[eé]rios?|avalia[cç][aã]o|itens de pontua[cç][aã]o|requisitos? obrigat[oó]rios?)\b[\s\S]{0,600}/gi;
+      let m; while((m=rx.exec(s))!==null){
+        const chunk = m[0].replace(/\s+/g,' ').trim();
+        if(chunk.length>60) crit.push(chunk.slice(0,400));
+      }
+      return crit.slice(0,8);
+    }
 
-        // Exibe resumo
-        summary.textContent = JSON.stringify(resp.meta || resp, null, 2);
-        result.hidden = false;
+    function extractLimitsBlock(text){
+      const lim = [];
+      const rx = /\b(?:at[eé]\s*)?(\d{2,5})\s*(caracteres|palavras|caracter|palavra)\b/gi;
+      let m; while((m=rx.exec(text))!==null){
+        lim.push({value: parseInt(m[1],10), unit: m[2].toLowerCase()});
+      }
+      return lim;
+    }
 
-        // Baixa DOCX base64 se disponível
-        if(resp.docx_base64){
-          downloadBase64(resp.docx_base64, resp.docx_filename || "proposta.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        }
-
-        // Links diretos, se Make retornar URLs
-        if(resp.download_urls && Array.isArray(resp.download_urls)){
-          resp.download_urls.forEach(u=>{
-            const a = document.createElement("a");
-            a.href = u; a.textContent = "Download: " + u; a.target = "_blank"; a.rel = "noopener";
-            const div = document.createElement("div"); div.appendChild(a);
-            downloadLinks.appendChild(div);
+    // ===== PERGUNTAS DO FORMULÁRIO + LIMITES =====
+    function parseFormQuestions(text){
+      const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
+      const qs = [];
+      for(let i=0;i<lines.length;i++){
+        const L = lines[i];
+        const isQ = /[:?]$/.test(L) || /^\d+[\)\.\-]\s+/.test(L) || /^t[ií]tulo|resumo|objetivo|metodologia|p[úu]blico/i.test(L);
+        if(isQ){
+          const limit = extractLimitsBlock(L);
+          qs.push({
+            question: L.replace(/\s*[:?]$/,''),
+            limit: limit.length? limit[0] : null
           });
         }
+      }
+      // fallback: se vazio, pega cabeçalhos que terminam com ":" no texto
+      if(qs.length===0){
+        const rx = /(^|\s)([A-ZÁÂÃÀÉÊÍÓÔÕÚÇ][^:\n]{3,70}):/gm;
+        let m; while((m=rx.exec(text))!==null){
+          qs.push({question: m[2].trim(), limit: null});
+        }
+      }
+      // dedup
+      const seen = new Set(); 
+      return qs.filter(q=>{
+        const k = q.question.toLowerCase();
+        if(seen.has(k)) return false; seen.add(k); return true;
+      }).slice(0,80);
+    }
+
+    // ===== DOCX =====
+    const H = docx.HeadingLevel;
+    const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
+    const H1 = (t)=> P(t,{heading:H.HEADING_1});
+    const H2 = (t)=> P(t,{heading:H.HEADING_2});
+    function docFromFilled(filled, meta){
+      const children = [];
+      children.push(H1(meta?.title || 'Proposta — Respostas do Formulário'));
+      if(meta?.project) { children.push(P('Projeto: ' + meta.project)); }
+      if(meta?.partner) { children.push(P('Chamada: ' + meta.partner)); }
+      children.push(P(''));
+
+      filled.forEach((item,idx)=>{
+        const head = `${idx+1}. ${item.question}`;
+        children.push(H2(head));
+        if(item.limit && item.limit.unit){
+          const unit = item.limit.unit.startsWith('caracter') ? 'caracteres' : 'palavras';
+          children.push(P(`Limite: até ${item.limit.value} ${unit}`));
+        }
+        children.push(P(item.answer || ''));
+        children.push(P(''));
+      });
+
+      return new docx.Document({ sections:[{properties:{},children}] });
+    }
+    async function saveDocx(doc, filename){
+      const blob = await docx.Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = filename || ('Proposta_'+Date.now()+'.docx');
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // ===== UI: infos =====
+    async function handleFile(inputEl, infoEl, reader){
+      const f = inputEl.files[0];
+      if(!f){ infoEl.style.display='none'; return ''; }
+      infoEl.textContent='Lendo arquivo...'; infoEl.style.display='block';
+      try{
+        const txt = await reader(f);
+        infoEl.textContent = `✓ ${f.name} | ${(txt.length/1024).toFixed(1)} KB texto`;
+        return txt;
+      }catch(e){
+        infoEl.textContent = 'Erro ao ler: ' + e.message;
+        return '';
+      }
+    }
+
+    // ===== EVENTOS =====
+    let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
+    $('#marcoFile').addEventListener('change', async ()=>{
+      MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny);
+    });
+    $('#editalFile').addEventListener('change', async ()=>{
+      const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny);
+      EDITAL_TXT = cleanEdital(raw);
+    });
+    $('#formFile').addEventListener('change', async ()=>{
+      FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
+    });
+
+    // ===== SUBMIT =====
+    document.getElementById('formTool').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      hide($('#debug'));
+      const statusEl = $('#status');
+      statusEl.classList.remove('error','success');
+      statusEl.textContent='';
+
+      if(!MARCO_TXT || !EDITAL_TXT || !FORM_TXT){
+        statusEl.textContent='Anexe os três arquivos antes de gerar.';
+        statusEl.classList.add('error');
+        return;
+      }
+
+      try{
+        $('#submitBtn').disabled = true;
+        statusEl.textContent = 'Extraindo perguntas e limites...';
+
+        const questions = parseFormQuestions(FORM_TXT);
+        const criteria = extractCriteria(EDITAL_TXT);
+
+        const payload = {
+          lang: ($('#lang').value||'pt-BR').trim(),
+          project: ($('#projectName').value||'').trim(),
+          partner: ($('#partnerName').value||'').trim(),
+          outFile: ($('#outFile').value||'').trim(),
+          notes: ($('#notes').value||'').trim(),
+          marco_logico: MARCO_TXT.slice(0,120000),
+          edital: EDITAL_TXT.slice(0,120000),
+          form_text: FORM_TXT.slice(0,120000),
+          questions: questions,              // [{question, limit:{value,unit}}]
+          criteria_from_call: criteria       // array de trechos curtos
+        };
+
+        statusEl.textContent = 'Enviando ao backend...';
+        const { ok, status, statusText, headers, text } = await safeFetch(WEBHOOK_URL, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json, text/plain'},
+          body: JSON.stringify(payload)
+        });
+
+        $('#debug').textContent = `Status: ${status} ${statusText}
+content-type: ${headers.get('content-type')||''}
+
+RAW:
+${text.slice(0,2000)}`;
+        show($('#debug'));
+
+        if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
+
+        let resp = text.trim();
+        if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
+
+        // tenta parse direto; se vier envelope maior, tenta localizar {"filled_form":
+        let data;
+        try{ data = JSON.parse(resp); }
+        catch{
+          const i = resp.indexOf('{"filled_form"');
+          if(i>=0) data = JSON.parse(resp.slice(i));
+        }
+        if(!data || !Array.isArray(data.filled_form)) throw new Error('Resposta inválida do backend');
+
+        const meta = {
+          title: 'Proposta — Formulário Preenchido',
+          project: payload.project,
+          partner: payload.partner
+        };
+        const doc = docFromFilled(data.filled_form, meta);
+        const fname = payload.outFile || 'Proposta_Preenchida.docx';
+        await saveDocx(doc, fname);
+
+        statusEl.textContent='✓ DOCX gerado com sucesso';
+        statusEl.classList.add('success');
+
       }catch(err){
-        status.textContent = "Erro: " + err.message;
+        statusEl.textContent = 'Erro: ' + err.message;
+        statusEl.classList.add('error');
+      }finally{
+        $('#submitBtn').disabled = false;
       }
     });
   </script>
