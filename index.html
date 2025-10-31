@@ -257,28 +257,26 @@
     /* ========= PARSER JSON ROBUSTO ========= */
     function parseJSONResponse(raw){
       if(!raw) throw new Error('Resposta vazia');
-
-      // Limpeza inicial, remoção de cercas ```...``` e separadores unicode
       let text = String(raw).replace(/^\uFEFF/, '').trim();
-      if (/^```/m.test(text)) {
-        const first = text.indexOf('```');
-        const second = text.indexOf('```', first + 3);
-        if (second > first) text = text.slice(first + 3, second);
-      }
+
+      // remove blocos cercados por ```...``` mantendo apenas o JSON interno
+      text = text.replace(/```[\s\S]*?```/g, (m)=>{
+        const s = m.indexOf('{'); const e = m.lastIndexOf('}');
+        return (s>-1 && e>s) ? m.slice(s, e+1) : '';
+      }).trim();
+
+      // normaliza separadores unicode de linha
       text = text.replace(/\u2028|\u2029/g, ' ').trim();
 
-      // Tenta parse direto
+      // tentativa direta
       try{
-        const direct = JSON.parse(text);
-        if (direct && (direct.filled_form || Array.isArray(direct))) {
-          return Array.isArray(direct) ? { filled_form: direct } : direct;
-        }
+        const j = JSON.parse(text);
+        return Array.isArray(j) ? {filled_form:j} : j;
       }catch(_){}
 
-      // Extrai maior bloco JSON balanceado do primeiro '{' ao fechamento
-      const start = text.indexOf('{');
-      const last  = text.lastIndexOf('}');
-      if (start !== -1 && last !== -1 && last > start) {
+      // varredura por bloco balanceado
+      const start = text.indexOf('{'); const last = text.lastIndexOf('}');
+      if (start !== -1 && last !== -1 && last > start){
         let inStr=false, esc=false, depth=0, end=-1;
         for(let i=start;i<=last;i++){
           const ch=text[i];
@@ -290,27 +288,20 @@
           }
           if(ch==='"'){ inStr=true; continue; }
           if(ch==='{') depth++;
-          if(ch==='}'){
-            depth--;
-            if(depth===0){ end=i+1; break; }
-          }
+          if(ch==='}'){ depth--; if(depth===0){ end=i+1; break; } }
         }
         if(end!==-1){
           const core=text.slice(start,end);
-          try{
-            const obj=JSON.parse(core);
-            return Array.isArray(obj)?{filled_form:obj}:obj;
-          }catch(_){}
+          const obj=JSON.parse(core);
+          return Array.isArray(obj)?{filled_form:obj}:obj;
         }
       }
 
-      // Fallback: corta após último '}' e tenta novamente
-      if (last !== -1) {
-        const maybe = text.slice(0, last + 1);
-        try{
-          const obj = JSON.parse(maybe);
-          return Array.isArray(obj)?{filled_form:obj}:obj;
-        }catch(_){}
+      // recorte após último }
+      if (last !== -1){
+        const maybe=text.slice(0,last+1);
+        const obj=JSON.parse(maybe);
+        return Array.isArray(obj)?{filled_form:obj}:obj;
       }
 
       throw new Error('Não foi possível processar a resposta JSON');
@@ -320,23 +311,53 @@
     function generateDocx(data, meta){
       const { Document, Paragraph, HeadingLevel, TextRun, AlignmentType } = docx;
       const children=[];
-      children.push(new Paragraph({ text: meta.title||'Proposta - Formulário Preenchido', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }));
+      children.push(new Paragraph({
+        text: meta.title||'Proposta - Formulário Preenchido',
+        heading: HeadingLevel.HEADING_1,
+        alignment: AlignmentType.CENTER
+      }));
       if(meta.project){
-        children.push(new Paragraph({ children:[ new TextRun({text:'Projeto: ',bold:true}), new TextRun({text:meta.project}) ] }));
+        children.push(new Paragraph({
+          children:[ new TextRun({text:'Projeto: ',bold:true}), new TextRun({text:meta.project}) ]
+        }));
       }
       if(meta.partner){
-        children.push(new Paragraph({ children:[ new TextRun({text:'Parceiro/Chamada: ',bold:true}), new TextRun({text:meta.partner}) ] }));
+        children.push(new Paragraph({
+          children:[ new TextRun({text:'Parceiro/Chamada: ',bold:true}), new TextRun({text:meta.partner}) ]
+        }));
       }
       children.push(new Paragraph({ text:`Data: ${new Date().toLocaleDateString('pt-BR')}`, spacing:{after:400} }));
+
       const qs=data.filled_form||[];
       qs.forEach((item, idx)=>{
-        children.push(new Paragraph({ text:`${idx+1}. ${item.question}`, heading: HeadingLevel.HEADING_2, spacing:{before:400,after:200} }));
+        // Pergunta
+        children.push(new Paragraph({
+          text:`${idx+1}. ${item.question}`,
+          heading: HeadingLevel.HEADING_2,
+          spacing:{before:400,after:200}
+        }));
+        // Limite
         if(item.limit && item.limit.value){
           const limitType = item.limit.type==='chars' ? 'caracteres' : 'palavras';
-          children.push(new Paragraph({ text:`Limite: ${item.limit.value} ${limitType}`, italics:true, color:'666666', spacing:{after:200} }));
+          children.push(new Paragraph({
+            text:`Limite: ${item.limit.value} ${limitType}`,
+            italics:true, color:'666666', spacing:{after:200}
+          }));
         }
-        children.push(new Paragraph({ text:(item.answer||'[Resposta não gerada]'), spacing:{after:400} }));
+        // Resposta com quebras de linha \n respeitadas
+        const answer = String(item.answer||'[Resposta não gerada]');
+        const lines = answer.split('\\n');
+        if (lines.length===1){
+          children.push(new Paragraph({ text: lines[0], spacing:{after:400} }));
+        } else {
+          children.push(new Paragraph({ text: lines[0] }));
+          for (let li=1; li<lines.length; li++){
+            children.push(new Paragraph({ text: lines[li] }));
+          }
+          children.push(new Paragraph({ text:'', spacing:{after:400} }));
+        }
       });
+
       return new Document({ sections:[{ properties:{}, children }] });
     }
     async function saveDocx(doc, filename){
@@ -413,7 +434,7 @@
           statusEl.classList.add('warning');
         }
 
-        // Teto por bloco para evitar 400 do Make/Claude
+        // Teto por bloco para evitar erros no webhook/LLM
         const MAX_CHARS_PER_BLOCK = 8000;
 
         const payload = {
@@ -439,7 +460,7 @@
           marco_esc8k:  capAndEscape(MARCO_TXT, MAX_CHARS_PER_BLOCK),
           edital_esc8k: capAndEscape(EDITAL_TXT,MAX_CHARS_PER_BLOCK),
           timestamp: new Date().toISOString(),
-          version: '2.5'
+          version: '2.6'
         };
 
         updateProgress('Enviando dados ao servidor...');
@@ -491,6 +512,7 @@
   </script>
 </body>
 </html>
+
 
 
 
