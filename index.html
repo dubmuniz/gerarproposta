@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preenchimento Automático de Formulários — Humana Brasil</title>
+  <meta name="robots" content="noindex" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --hb-green:#2e7d32; --hb-green-600:#1b5e20; --ink:#0b0d0e; --muted:#5f6b72; --bg:#f5f7f6; --white:#fff;
+      --radius:18px; --shadow:0 10px 20px rgba(0,0,0,.06); --shadow2:0 14px 28px rgba(0,0,0,.10);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto; color:var(--ink); background:var(--bg)}
+    .wrap{max-width:920px;margin:0 auto;padding:28px 18px 48px}
+    header{display:grid;gap:8px;margin-bottom:18px}
+    .brand{display:inline-flex;align-items:center;gap:10px;color:var(--hb-green-600);font-weight:700}
+    .dot{width:10px;height:10px;background:var(--hb-green);border-radius:50%}
+    h1{margin:0;font-size:26px}
+    p.lead{margin:0;color:var(--muted)}
+    .card{background:var(--white);border:1px solid rgba(0,0,0,.06);box-shadow:var(--shadow);border-radius:var(--radius);padding:16px}
+    .grid{display:grid;gap:14px}
+    label{font-weight:600;font-size:14px;margin-bottom:6px;display:block}
+    input[type="file"], textarea, input[type="text"]{width:100%;padding:10px 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff}
+    textarea{min-height:110px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:720px){.row{grid-template-columns:1fr 1fr}}
+    .hint{font-size:12px;color:var(--muted)}
+    .btn{appearance:none;border:0;background:var(--hb-green);color:#fff;padding:12px 16px;border-radius:12px;font-weight:700;cursor:pointer}
+    .btn:hover{box-shadow:var(--shadow2);transform:translateY(-1px)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .status{margin-top:12px;font-size:13px;color:var(--muted)}
+    .result{margin-top:16px}
+    .pill{display:inline-block;background:rgba(46,125,50,.10);color:var(--hb-green-600);padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(46,125,50,.18)}
+    .code{white-space:pre-wrap;background:#fff;border:1px solid rgba(0,0,0,.06);padding:12px;border-radius:12px;font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><span class="dot"></span>Humana Brasil</div>
+      <h1>Preenchimento Automático de Formulários de Proposta</h1>
+      <p class="lead">Envie o Marco Lógico, o Edital e o Formulário. A IA gera respostas alinhadas a critérios e limites, e retorna DOCX.</p>
+    </header>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="logframe">1) Marco Lógico (DOCX, PDF, XLSX, XLS)</label>
+          <input id="logframe" type="file" accept=".doc,.docx,.pdf,.xlsx,.xls" />
+          <div class="hint">Base da proposta. Indicadores, produtos, atividades.</div>
+        </div>
+
+        <div>
+          <label for="call">2) Edital da Chamada (PDF, DOCX, DOC)</label>
+          <input id="call" type="file" accept=".pdf,.doc,.docx" />
+          <div class="hint">Critérios de avaliação, requisitos, limites.</div>
+        </div>
+
+        <div>
+          <label for="form">3) Formulário a preencher (DOCX, DOC, PDF, XLSX, XLS)</label>
+          <input id="form" type="file" accept=".doc,.docx,.pdf,.xlsx,.xls" />
+          <div class="hint">Perguntas, campos, limites por seção.</div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="notes">Observações opcionais</label>
+            <textarea id="notes" placeholder="Links, notas, delimitações específicas, palavras-chave obrigatórias."></textarea>
+          </div>
+          <div>
+            <label for="webhook">Webhook do Make</label>
+            <input id="webhook" type="text" placeholder="https://hook.us2.make.com/SEU_WEBHOOK" />
+            <div class="hint">Fluxo: HTML → Webhook (upload) → Claude → Webhook (retorno DOCX).</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label><input id="enforceLimits" type="checkbox" checked /> Respeitar limites de palavras e caracteres</label>
+            <div class="hint">A IA busca limites no formulário ou edital e aplica cortes inteligentes.</div>
+          </div>
+          <div>
+            <label><input id="includeCitations" type="checkbox" checked /> Incluir citações e artigos do edital utilizados</label>
+            <div class="hint">A proposta cita requisitos e critérios quando pertinente.</div>
+          </div>
+        </div>
+
+        <button id="send" class="btn">Enviar e Gerar DOCX</button>
+        <div id="status" class="status"></div>
+
+        <div id="result" class="result" hidden>
+          <span class="pill">Retorno</span>
+          <div id="summary" class="code"></div>
+          <div id="downloadLinks"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fileToBase64(file){
+      if(!file) return null;
+      const buf = await file.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize){
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    function safeName(name){ return name ? name.replace(/[^a-zA-Z0-9._-]/g, "_") : ""; }
+
+    async function postJSON(url, payload){
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      });
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      return res.json().catch(async ()=>{
+        const text = await res.text();
+        return { raw_text: text };
+      });
+    }
+
+    function downloadBase64(b64, filename, mime){
+      const byteChars = atob(b64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], {type: mime || "application/octet-stream"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "arquivo.bin";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    }
+
+    document.getElementById("send").addEventListener("click", async ()=>{
+      const webhook = document.getElementById("webhook").value.trim();
+      const status = document.getElementById("status");
+      const result = document.getElementById("result");
+      const summary = document.getElementById("summary");
+      const downloadLinks = document.getElementById("downloadLinks");
+      result.hidden = true; summary.textContent = ""; downloadLinks.innerHTML = "";
+      if(!webhook){ status.textContent = "Informe o webhook do Make."; return; }
+
+      const fLog = document.getElementById("logframe").files[0];
+      const fCall = document.getElementById("call").files[0];
+      const fForm = document.getElementById("form").files[0];
+      if(!fLog || !fCall || !fForm){ status.textContent = "Envie os três arquivos."; return; }
+
+      status.textContent = "Lendo arquivos...";
+      try{
+        const [bLog, bCall, bForm] = await Promise.all([
+          fileToBase64(fLog), fileToBase64(fCall), fileToBase64(fForm)
+        ]);
+
+        const payload = {
+          version: "1.0",
+          source: "humana-hub-formfill",
+          options: {
+            enforce_limits: document.getElementById("enforceLimits").checked,
+            include_citations: document.getElementById("includeCitations").checked,
+            return_format: ["docx","json","html"]
+          },
+          notes: document.getElementById("notes").value || "",
+          files: {
+            logframe: { filename: safeName(fLog.name), mimetype: fLog.type || null, base64: bLog },
+            call:     { filename: safeName(fCall.name), mimetype: fCall.type || null, base64: bCall },
+            form:     { filename: safeName(fForm.name), mimetype: fForm.type || null, base64: bForm }
+          },
+          client_meta: {
+            user_agent: navigator.userAgent,
+            ts: new Date().toISOString()
+          }
+        };
+
+        status.textContent = "Enviando ao Make...";
+        const resp = await postJSON(webhook, payload);
+        status.textContent = "Processado.";
+
+        // Exibe resumo
+        summary.textContent = JSON.stringify(resp.meta || resp, null, 2);
+        result.hidden = false;
+
+        // Baixa DOCX base64 se disponível
+        if(resp.docx_base64){
+          downloadBase64(resp.docx_base64, resp.docx_filename || "proposta.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        }
+
+        // Links diretos, se Make retornar URLs
+        if(resp.download_urls && Array.isArray(resp.download_urls)){
+          resp.download_urls.forEach(u=>{
+            const a = document.createElement("a");
+            a.href = u; a.textContent = "Download: " + u; a.target = "_blank"; a.rel = "noopener";
+            const div = document.createElement("div"); div.appendChild(a);
+            downloadLinks.appendChild(div);
+          });
+        }
+      }catch(err){
+        status.textContent = "Erro: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
