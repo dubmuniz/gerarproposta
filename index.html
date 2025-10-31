@@ -65,7 +65,7 @@
       <div class="two">
         <div>
           <label>Nome do Projeto</label>
-          <input id="projectName" type="text" placeholder="Ex: Territórios Vivos — Ilha do Bananal">
+          <input id="projectName" type="text" placeholder="Ex: Territórios Vivos, Ilha do Bananal">
         </div>
         <div>
           <label>Parceiro / Chamada</label>
@@ -75,7 +75,7 @@
 
       <div>
         <label>Observações adicionais</label>
-        <textarea id="notes" placeholder="Pontos de ênfase, palavras-chave, público prioritário, etc."></textarea>
+        <textarea id="notes" placeholder="Pontos de ênfase, palavras-chave, público prioritário"></textarea>
       </div>
 
       <div class="two">
@@ -86,7 +86,7 @@
             <option value="es">Español (es)</option>
             <option value="en">English (en)</option>
           </select>
-          <div class="muted">Enviado ao Claude pelo Make</div>
+          <div class="muted">O backend usa Claude via Make</div>
         </div>
         <div>
           <label>Arquivo DOCX gerado</label>
@@ -115,6 +115,8 @@
       .replace(/\r?\n/g,' ')
       .replace(/\s+/g,' ')
       .trim());
+
+    const safeSlice = (t, n) => sanitize(String(t||'')).slice(0, n);
 
     async function safeFetch(url, opts={}){
       const resp = await fetch(url, opts);
@@ -194,45 +196,10 @@
     function extractLimitsBlock(text){
       const lim = [];
       const rx = /\b(?:at[eé]\s*)?(\d{1,4})\s*(caracteres|palavras|caracter|palabra|palabras)\b/gi;
-      let m; while((m=rx.exec(text))!==null){
-        lim.push({value: parseInt(m[1],10), unit: m[2].toLowerCase()});
-      }
+      let m; while((m=rx.exec(text))!==null){ lim.push({value: parseInt(m[1],10), unit: m[2].toLowerCase()}); }
       const rxPg = /\bm[aá]ximo\s+(\d{1,2})\s+p[aá]ginas?\b/gi;
-      while((m=rxPg.exec(text))!==null){
-        const p = Math.max(1, parseInt(m[1],10));
-        lim.push({value: p*500, unit: 'palavras'});
-      }
+      while((m=rxPg.exec(text))!==null){ const p = Math.max(1, parseInt(m[1],10)); lim.push({value: p*500, unit: 'palavras'}); }
       return lim;
-    }
-
-    function parseFormQuestionsGeneric(text){
-      const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
-      const qs = [];
-      for(let i=0;i<lines.length;i++){
-        const L = lines[i];
-        const isQ =
-          /[:?]$/.test(L) ||
-          /^\d+(\.\d+)*[\)\.\-]?\s+/.test(L) ||
-          /^t[ií]tulo|resumo|resumen|objetivo|metodolog[ií]a|p[úu]blico|pertin[eé]ncia|pertinencia|justificativa/i.test(L);
-        if(isQ){
-          const limit = extractLimitsBlock(L);
-          qs.push({
-            question: L.replace(/\s*[:?]$/,''),
-            limit: limit.length? normalizeLimit(limit[0]) : null
-          });
-        }
-      }
-      const rxHead = /^\d+(\.\d+)*\.\s+([A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑa-z].{2,})$/gm;
-      let m; while((m=rxHead.exec(text))!==null){
-        const q = m[0].trim();
-        if(!qs.find(x=>x.question===q)) qs.push({question:q, limit:null});
-      }
-      const seen = new Set();
-      const out = qs.filter(q=>{
-        const k = q.question.toLowerCase();
-        if(seen.has(k)) return false; seen.add(k); return true;
-      });
-      return out.slice(0,120);
     }
 
     function normalizeLimit(lim){
@@ -240,138 +207,24 @@
       let unit = (lim.unit||'').toLowerCase();
       unit = unit.replace('caracteres','chars').replace('caracter','chars')
                  .replace('palavras','words').replace('palabra','words').replace('palabras','words');
-      return { value: lim.value, unit: unit };
+      return { value: lim.value, type: unit };
     }
 
-    function parseUESpanishForm(text){
+    function parseFormQuestionsGeneric(text){
+      const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
       const qs = [];
-      const t = ' '+String(text||'')+' ';
-      const add = (question, limitText)=>{
-        let lim = null;
-        if(limitText){
-          const found = extractLimitsBlock(limitText);
-          if(found && found.length) lim = normalizeLimit(found[0]);
-        }
-        if(!qs.find(q=>q.question===question)) qs.push({question, limit:lim});
-      };
-      if(/1\.1\.\s*resumen de la acci[oó]n/i.test(t)) add('1.1. Resumen de la acción', null);
-      if(/1\.1\.1\.\s*cumplimente el cuadro/i.test(t)) add('1.1.1. Cumplimente el cuadro del resumen de la acción', null);
-      const sec12 = /1\.2\.\s*descripci[oó]n de la acci[oó]n[:\s]*\(m[aá]ximo\s*dos\s*p[aá]ginas?\)/i;
-      if(sec12.test(t)) add('1.2. Descripción de la acción', 'máximo dos páginas');
-      const subs12 = [
-        'i. Señale los antecedentes e análises base do desenho (contexto/estudos).',
-        'ii. Explique os objetivos citados na seção 1.1.',
-        'iii. Partes interessadas, atitudes e consultas realizadas.',
-        'iv. Lógica de intervenção, produtos, efeitos, impacto, riscos e pressupostos.',
-        'v. Atividades propostas e vínculos entre grupos de atividades.',
-        'vi. Integração de transversais: direitos humanos, gênero, governança, juventude, povos indígenas, ambiente, HIV/sida.',
-        'vii. Calendário indicativo e fatores específicos.'
-      ];
-      subs12.forEach(s=>add(s, 'máximo duas páginas'));
-      const sec13 = /1\.3\.\s*pertinencia de la acci[oó]n[:\s]*\(m[aá]ximo\s*tres\s*p[aá]ginas?\)/i;
-      if(sec13.test(t)) add('1.3. Pertinencia de la acción', 'máximo tres páginas');
-      if(/1\.3\.1\./i.test(t)){
-        add('1.3.1. Pertinência face a objetivos e prioridades da convocatória', 'máximo tres páginas');
-        add('1.3.1.i. Pertinência com objetivos/prioridades', 'máximo tres páginas');
-        add('1.3.1.ii. Subtemas/ámbitos e requisitos da Guia', 'máximo tres páginas');
-        add('1.3.1.iii. Resultados previstos da Guia a serem abordados', 'máximo tres páginas');
+      for(let i=0;i<lines.length;i++){
+        const L = lines[i];
+        const isQ = /[:?]$/.test(L) || /^\d+(\.\d+)*[)\.-]?\s+/.test(L) || /^t[ií]tulo|resumo|resumen|objetivo|metodolog[ií]a|p[úu]blico|pertin[eé]ncia|pertinencia|justificativa/i.test(L);
+        if(isQ){ const limit = extractLimitsBlock(L); qs.push({ question: L.replace(/\s*[:?]$/,''), limit: limit.length? normalizeLimit(limit[0]) : null }); }
       }
-      if(/1\.3\.2\./i.test(t)){
-        add('1.3.2.i. Situação prévia com dados quantificados', 'máximo tres páginas');
-        add('1.3.2.ii. Análise de problemas e inter-relações', 'máximo tres páginas');
-        add('1.3.2.iii. Planos relevantes e relação com a ação', 'máximo tres páginas');
-        add('1.3.2.iv. Continuidade de ação anterior e uso de resultados', 'máximo tres páginas');
-        add('1.3.2.v. Integração em programa amplo e sinergias', 'máximo tres páginas');
-        add('1.3.2.vi. Complementaridade com iniciativas UE e doadores', 'máximo tres páginas');
-      }
-      if(/1\.3\.3\./i.test(t)){
-        add('1.3.3.i. Descrição/quantificação dos destinatários e beneficiários', 'máximo tres páginas');
-        add('1.3.3.ii. Necessidades/dificuldades (capacidade)', 'máximo tres páginas');
-        add('1.3.3.iii. Pertinência da proposta às necessidades', 'máximo tres páginas');
-        add('1.3.3.iv. Processos participativos para garantir participação', 'máximo tres páginas');
-      }
-      if(/1\.3\.4\./i.test(t)){
-        add('1.3.4. Valor agregado: PPP, inovação, boas práticas', 'máximo tres páginas');
-      }
-      if(/1\.4\.\s*solicitante principal/i.test(t)){
-        add('1.4. Solicitante principal, cosolicitantes e afiliadas', null);
-      }
-      qs.forEach(q=>{ if(q.limit) q.limit = normalizeLimit(q.limit); });
-      return qs;
+      const rxHead = /^\d+(\.\d+)*\.\s+([A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑa-z].{2,})$/gm; let m; while((m=rxHead.exec(text))!==null){ const q = m[0].trim(); if(!qs.find(x=>x.question===q)) qs.push({question:q, limit:null}); }
+      const seen = new Set();
+      const out = qs.filter(q=>{ const k=q.question.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
+      return out.slice(0,120);
     }
 
-    function stripFencesAndBOM(s){
-      if(!s) return '';
-      let t = String(s).replace(/^\uFEFF/, '').trim();
-      if(t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i,'');
-      if(t.endsWith('```')) t = t.slice(0, -3);
-      return t.trim();
-    }
-    function extractBalancedFromStringToJSON(s, startIndex, openCh, closeCh){
-      let inStr=false, esc=false, depth=0;
-      for(let i=startIndex;i<s.length;i++){
-        const c = s[i];
-        if(inStr){
-          if(esc){ esc=false; continue; }
-          if(c==='\\'){ esc=true; continue; }
-          if(c==='"'){ inStr=false; continue; }
-          continue;
-        }else{
-          if(c === '"'){ inStr=true; continue; }
-          if(c === openCh){
-            depth++;
-          }else if(c === closeCh){
-            depth--;
-            if(depth===0){
-              const candidate = s.slice(startIndex, i+1).trim();
-              try{ return JSON.parse(candidate); }
-              catch(_){
-                try{
-                  const cleaned = candidate.replace(/}\s*[\s\S]*$/, '}').replace(/]\s*[\s\S]*$/, ']');
-                  return JSON.parse(cleaned);
-                }catch(__){ return null; }
-              }
-            }
-          }
-        }
-      }
-      return null;
-    }
-    function extractFirstJSONValue(raw, keyHints){
-      const s = stripFencesAndBOM(raw);
-      const n = s.length;
-      if(Array.isArray(keyHints) && keyHints.length){
-        const idx = s.toLowerCase().indexOf(String(keyHints[0]).toLowerCase());
-        if(idx>=0){
-          for(let j=idx;j>=0;j--){
-            if(s[j]==='{'){
-              const obj = extractBalancedFromStringToJSON(s, j, '{','}');
-              if(obj) return obj;
-              break;
-            }
-          }
-        }
-      }
-      for(let i=0;i<n;i++){
-        const c = s[i];
-        if(c==='{'){
-          const obj = extractBalancedFromStringToJSON(s, i, '{','}');
-          if(obj) return obj;
-        }
-        if(c==='['){
-          const arr = extractBalancedFromStringToJSON(s, i, '[',']');
-          if(arr){
-            if(Array.isArray(arr)) return { filled_form: arr };
-          }
-        }
-      }
-      try{
-        const direct = JSON.parse(s);
-        if(Array.isArray(direct)) return { filled_form: direct };
-        return direct;
-      }catch(_){ return null; }
-    }
-
+    /* ========= DOCX ========= */
     const H = docx.HeadingLevel;
     const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
     const H1 = (t)=> P(t,{heading:H.HEADING_1});
@@ -385,10 +238,10 @@
       filled.forEach((item,idx)=>{
         const head = `${idx+1}. ${item.question}`;
         children.push(H2(head));
-        if(item.limit && item.limit.value){
-          const unit = item.limit.unit && item.limit.unit.startsWith('char') ? 'caracteres' : 'palavras';
-          children.push(P(`Limite: até ${item.limit.value} ${unit}`));
-        }
+        const lim = item.limit || null;
+        const unitKey = lim && (lim.type || lim.unit) || '';
+        const unitLabel = String(unitKey).startsWith('char') ? 'caracteres' : (String(unitKey).startsWith('word') ? 'palavras' : '');
+        if(lim && lim.value){ children.push(P(`Limite: até ${lim.value} ${unitLabel}`)); }
         children.push(P(item.answer || ''));
         children.push(P(''));
       });
@@ -405,143 +258,89 @@
       const f = inputEl.files[0];
       if(!f){ infoEl.style.display='none'; return ''; }
       infoEl.textContent='Lendo arquivo...'; infoEl.style.display='block';
-      try{
-        const txt = await reader(f);
-        infoEl.textContent = `✓ ${f.name} | ${(txt.length/1024).toFixed(1)} KB texto`;
-        return txt;
-      }catch(e){
-        infoEl.textContent = 'Erro ao ler: ' + e.message;
-        return '';
-      }
+      try{ const txt = await reader(f); infoEl.textContent = `✓ ${f.name} | ${(txt.length/1024).toFixed(1)} KB texto`; return txt; }
+      catch(e){ infoEl.textContent = 'Erro ao ler: ' + e.message; return ''; }
     }
 
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
-    $('#marcoFile').addEventListener('change', async ()=>{
-      MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny);
-    });
-    $('#editalFile').addEventListener('change', async ()=>{
-      const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny);
-      EDITAL_TXT = cleanEdital(raw);
-    });
-    $('#formFile').addEventListener('change', async ()=>{
-      FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
-    });
+    $('#marcoFile').addEventListener('change', async ()=>{ MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny); });
+    $('#editalFile').addEventListener('change', async ()=>{ const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny); EDITAL_TXT = cleanEdital(raw); });
+    $('#formFile').addEventListener('change', async ()=>{ FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny); });
 
     $('#lang').addEventListener('change', ()=>{
-      const cur = ($('#outFile').value||'').trim();
-      if(cur) return;
+      const cur = ($('#outFile').value||'').trim(); if(cur) return;
       const lang = $('#lang').value;
       const base = ($('#projectName').value||'Proposta').replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_').slice(0,40) || 'Proposta';
-      const suf = lang==='pt-BR' ? 'pt-BR' : lang;
-      $('#outFile').value = `${base}_${suf}.docx`;
+      const suf = lang==='pt-BR' ? 'pt-BR' : lang; $('#outFile').value = `${base}_${suf}.docx`;
     });
 
     document.getElementById('formTool').addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      hide($('#debug'));
-      const statusEl = $('#status');
-      statusEl.classList.remove('error','success');
-      statusEl.textContent='';
-
-      if(!MARCO_TXT || !EDITAL_TXT || !FORM_TXT){
-        statusEl.textContent='Anexe os três arquivos antes de gerar.';
-        statusEl.classList.add('error');
-        return;
-      }
+      e.preventDefault(); hide($('#debug'));
+      const statusEl = $('#status'); statusEl.classList.remove('error','success'); statusEl.textContent='';
+      if(!MARCO_TXT || !EDITAL_TXT || !FORM_TXT){ statusEl.textContent='Anexe os três arquivos antes de gerar.'; statusEl.classList.add('error'); return; }
 
       try{
-        $('#submitBtn').disabled = true;
-        statusEl.textContent = 'Extraindo perguntas e limites...';
+        $('#submitBtn').disabled = true; statusEl.textContent = 'Preparando pacote compacto...';
 
         let questions = parseFormQuestionsGeneric(FORM_TXT);
         if(questions.length < 8 && /resumen de la acci[oó]n|pertinencia de la acci[oó]n|solicitante principal/i.test(FORM_TXT)){
-          const ueQs = parseUESpanishForm(FORM_TXT);
-          if(ueQs.length) questions = ueQs;
+          questions = questions.concat([{question:'1.1. Resumen de la acción', limit:null},{question:'1.2. Descripción de la acción', limit:{type:'words',value:1000}},{question:'1.3. Pertinencia de la acción', limit:{type:'words',value:1500}}]);
         }
-        questions = questions.map(q=>{ if(q.limit && q.limit.unit) q.limit.unit = q.limit.unit.toLowerCase(); return q; });
-
         const criteria = extractCriteria(EDITAL_TXT);
 
-        const payload = {
+        const compact = {
           lang: ($('#lang').value||'pt-BR').trim(),
           project: ($('#projectName').value||'').trim(),
           partner: ($('#partnerName').value||'').trim(),
-          outFile: ($('#outFile').value||'').trim(),
           notes: ($('#notes').value||'').trim(),
-
-          // chaves minúsculas (compatibilidade antiga)
-          marco_logico: MARCO_TXT.slice(0,120000),
-          edital: EDITAL_TXT.slice(0,120000),
-          form_text: FORM_TXT.slice(0,120000),
           questions: questions,
-          criteria_from_call: criteria,
-          questions_raw: JSON.stringify(questions),
+          edital_criteria: criteria,
+          marco_excerpt: safeSlice(MARCO_TXT, 6000),
+          edital_excerpt: safeSlice(EDITAL_TXT, 8000),
+          form_excerpt: safeSlice(FORM_TXT, 4000)
+        };
+        const compactJson = JSON.stringify(compact);
+        const compact_b64 = btoa(unescape(encodeURIComponent(compactJson)));
 
-          // chaves MAIÚSCULAS (compatibilidade com seu backend atual)
-          MARCO_LOGICO: MARCO_TXT.slice(0,120000),
-          EDITAL: EDITAL_TXT.slice(0,120000),
-          FORM_TEXT: FORM_TXT.slice(0,120000),
-          QUESTIONS_RAW: JSON.stringify(questions),
-          CRITERIA_FROM_CALL: criteria
+        const payload = {
+          lang: compact.lang,
+          project: compact.project,
+          partner: compact.partner,
+          outFile: ($('#outFile').value||'').trim(),
+          notes: compact.notes,
+          compact_b64: compact_b64,
+          q_count: questions.length,
+          sizes: { marco: compact.marco_excerpt.length, edital: compact.edital_excerpt.length, form: compact.form_excerpt.length, b64: compact_b64.length }
         };
 
         statusEl.textContent = 'Enviando ao backend...';
-
         const { ok, status, statusText, headers, text } = await safeFetch(WEBHOOK_URL, {
-          method:'POST',
-          headers:{'Content-Type':'application/json','Accept':'application/json, text/plain'},
-          body: JSON.stringify(payload)
+          method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json, text/plain'}, body: JSON.stringify(payload)
         });
 
-        const sizes = `TXTs enviados — FORM_TEXT:${payload.FORM_TEXT.length} | MARCO_LOGICO:${payload.MARCO_LOGICO.length} | EDITAL:${payload.EDITAL.length} | Qs:${questions.length}`;
-        $('#debug').textContent = `Status: ${status} ${statusText}
-content-type: ${headers.get('content-type')||''}
-${sizes}
-
-RAW:
-${(text||'').slice(0,2000)}`;
-        show($('#debug'));
+        const sizesTxt = `compact_b64: ${payload.sizes.b64} | marco:${payload.sizes.marco} | edital:${payload.sizes.edital} | form:${payload.sizes.form} | q:${payload.q_count}`;
+        $('#debug').textContent = `Status: ${status} ${statusText}\ncontent-type: ${headers.get('content-type')||''}\n${sizesTxt}\n\nRAW:\n${(text||'').slice(0,2000)}`; show($('#debug'));
 
         if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
-        const resp = (text||'').trim();
-        if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
+        const resp = (text||'').trim(); if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
 
-        // se backend retornou um JSON de erro (com fences)
-        const maybeErr = extractFirstJSONValue(resp, ['"status"','status']);
-        if(maybeErr && typeof maybeErr==='object' && maybeErr.status && String(maybeErr.status).toLowerCase()!=='ok' && !maybeErr.filled_form){
-          throw new Error(maybeErr.mensagem || 'Backend retornou erro.');
+        const parsed = (()=>{ try{ return JSON.parse(resp); }catch(_){ return null; } })();
+        let data = parsed && parsed.filled_form ? parsed : null;
+        if(!data){
+          // tenta extrair JSON em linha
+          const match = resp.match(/\{\"filled_form\"[\s\S]*\}\}/);
+          if(match){ try{ data = JSON.parse(match[0]); }catch(_){} }
         }
+        if(!data || !Array.isArray(data.filled_form) || data.filled_form.length===0){ throw new Error('Resposta inválida do backend ou sem filled_form.'); }
 
-        // parse normal para filled_form
-        const parsed = extractFirstJSONValue(resp, ['"filled_form"','filled_form']);
-        if(!parsed) throw new Error('Não foi possível localizar JSON válido na resposta.');
-
-        const data = Array.isArray(parsed.filled_form) ? parsed : (Array.isArray(parsed) ? {filled_form: parsed} : parsed);
-        if(!data || !Array.isArray(data.filled_form) || data.filled_form.length===0){
-          throw new Error('Resposta inválida do backend. Preview: ' + resp.slice(0,300));
-        }
-
-        const meta = {
-          title: 'Proposta — Formulário Preenchido',
-          project: payload.project,
-          partner: payload.partner
-        };
+        const meta = { title: 'Proposta — Formulário Preenchido', project: compact.project, partner: compact.partner };
         const doc = docFromFilled(data.filled_form, meta);
-        const fname = payload.outFile || (payload.project ? (payload.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_') + '_' + payload.lang + '.docx') : 'Proposta_Preenchida.docx');
+        const fname = payload.outFile || (compact.project ? (compact.project.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_') + '_' + compact.lang + '.docx') : 'Proposta_Preenchida.docx');
         await saveDocx(doc, fname);
-
-        statusEl.textContent='✓ DOCX gerado com sucesso';
-        statusEl.classList.add('success');
-
-      }catch(err){
-        const statusEl = $('#status');
-        statusEl.textContent = 'Erro: ' + err.message;
-        statusEl.classList.add('error');
-      }finally{
-        $('#submitBtn').disabled = false;
-      }
+        statusEl.textContent='✓ DOCX gerado com sucesso'; statusEl.classList.add('success');
+      }catch(err){ const statusEl = $('#status'); statusEl.textContent = 'Erro: ' + err.message; statusEl.classList.add('error'); }
+      finally{ $('#submitBtn').disabled = false; }
     });
   </script>
 </body>
 </html>
-
