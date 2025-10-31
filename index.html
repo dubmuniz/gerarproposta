@@ -22,7 +22,7 @@
     form{background:#fff;border:1px solid #eee;border-radius:12px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
     .grid{display:grid;grid-template-columns:1fr;gap:16px}
     label{display:block;font-weight:600;margin:4px 0 6px}
-    input,textarea{width:100%;border:1px solid #d8dee4;border-radius:8px;padding:12px;font:inherit}
+    input,textarea,select{width:100%;border:1px solid #d8dee4;border-radius:8px;padding:12px;font:inherit}
     textarea{min-height:120px;resize:vertical}
     .file-info{background:#f0f7f4;border-left:4px solid var(--green);padding:10px;border-radius:6px;margin-top:8px;font-size:13px;display:none}
     .btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:14px}
@@ -39,14 +39,14 @@
 <body>
   <header class="wrap">
     <h1>Ferramenta de Preenchimento de Formulários de Propostas</h1>
-    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche as respostas respeitando critérios, requisitos e limites de palavras/caracteres.</p>
+    <p class="lead">Faça upload do Marco Lógico, Edital e Formulário. A IA preenche as respostas respeitando critérios, requisitos e limites de palavras ou caracteres.</p>
   </header>
 
   <main class="wrap">
     <form id="formTool" class="grid" novalidate>
       <div>
-        <label>1) Marco Lógico (PDF, DOCX, TXT)</label>
-        <input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt" required>
+        <label>1) Marco Lógico (PDF, DOCX, TXT, XLSX, XLS)</label>
+        <input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt,.xlsx,.xls" required>
         <div id="marcoInfo" class="file-info"></div>
       </div>
 
@@ -81,11 +81,16 @@
       <div class="two">
         <div>
           <label>Idioma de saída</label>
-          <input id="lang" type="text" value="pt-BR">
+          <select id="lang">
+            <option value="pt-BR" selected>Português (pt-BR)</option>
+            <option value="es">Español (es)</option>
+            <option value="en">English (en)</option>
+          </select>
+          <div class="muted">O Make enviará este valor para o Claude</div>
         </div>
         <div>
           <label>Arquivo DOCX gerado</label>
-          <input id="outFile" type="text" placeholder="Ex: Proposta_Piabanha.docx">
+          <input id="outFile" type="text" placeholder="Ex: Propuesta_Piabanha_es.docx">
         </div>
       </div>
 
@@ -96,10 +101,8 @@
   </main>
 
   <script>
-    // ===== CONFIGURE AQUI SEU WEBHOOK DO MAKE =====
-    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+    const WEBHOOK_URL = 'https://hook.us2.make.com/SEU_WEBHOOK_AQUI';
 
-    // ===== HELPERS =====
     const $ = s => document.querySelector(s);
     const show = el => el.classList.remove('hidden');
     const hide = el => el.classList.add('hidden');
@@ -116,12 +119,11 @@
       return { ok: resp.ok, status: resp.status, statusText: resp.statusText, headers: resp.headers, text };
     }
 
-    // ===== READERS =====
     async function readPDF(file){
       const arr = await file.arrayBuffer();
       pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       const pdf = await pdfjsLib.getDocument({data:arr}).promise;
-      let text=''; 
+      let text='';
       for(let p=1;p<=pdf.numPages;p++){
         const pg=await pdf.getPage(p);
         const tc=await pg.getTextContent();
@@ -159,7 +161,6 @@
       return sanitize(await file.text());
     }
 
-    // ===== LIMPEZA DO EDITAL E EXTRAÇÕES =====
     function cleanEdital(t){
       if(!t) return '';
       let s=' '+t+' ';
@@ -194,7 +195,6 @@
       return lim;
     }
 
-    // ===== PERGUNTAS DO FORMULÁRIO + LIMITES =====
     function parseFormQuestions(text){
       const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
       const qs = [];
@@ -209,22 +209,19 @@
           });
         }
       }
-      // fallback: se vazio, pega cabeçalhos que terminam com ":" no texto
       if(qs.length===0){
         const rx = /(^|\s)([A-ZÁÂÃÀÉÊÍÓÔÕÚÇ][^:\n]{3,70}):/gm;
         let m; while((m=rx.exec(text))!==null){
           qs.push({question: m[2].trim(), limit: null});
         }
       }
-      // dedup
-      const seen = new Set(); 
+      const seen = new Set();
       return qs.filter(q=>{
         const k = q.question.toLowerCase();
         if(seen.has(k)) return false; seen.add(k); return true;
       }).slice(0,80);
     }
 
-    // ===== DOCX =====
     const H = docx.HeadingLevel;
     const P = (t,opts={})=> new docx.Paragraph({text:t||'',...opts});
     const H1 = (t)=> P(t,{heading:H.HEADING_1});
@@ -235,18 +232,16 @@
       if(meta?.project) { children.push(P('Projeto: ' + meta.project)); }
       if(meta?.partner) { children.push(P('Chamada: ' + meta.partner)); }
       children.push(P(''));
-
       filled.forEach((item,idx)=>{
         const head = `${idx+1}. ${item.question}`;
         children.push(H2(head));
-        if(item.limit && item.limit.unit){
-          const unit = item.limit.unit.startsWith('caracter') ? 'caracteres' : 'palavras';
+        if(item.limit && item.limit.value){
+          const unit = item.limit.unit && item.limit.unit.startsWith('caracter') ? 'caracteres' : 'palavras';
           children.push(P(`Limite: até ${item.limit.value} ${unit}`));
         }
         children.push(P(item.answer || ''));
         children.push(P(''));
       });
-
       return new docx.Document({ sections:[{properties:{},children}] });
     }
     async function saveDocx(doc, filename){
@@ -256,7 +251,6 @@
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
 
-    // ===== UI: infos =====
     async function handleFile(inputEl, infoEl, reader){
       const f = inputEl.files[0];
       if(!f){ infoEl.style.display='none'; return ''; }
@@ -271,7 +265,6 @@
       }
     }
 
-    // ===== EVENTOS =====
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
     $('#marcoFile').addEventListener('change', async ()=>{
       MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny);
@@ -284,7 +277,16 @@
       FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
     });
 
-    // ===== SUBMIT =====
+    // sugestão automática do nome do arquivo conforme idioma
+    $('#lang').addEventListener('change', ()=>{
+      const cur = ($('#outFile').value||'').trim();
+      if(cur) return;
+      const lang = $('#lang').value;
+      const base = ($('#projectName').value||'Proposta').replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_').slice(0,40) || 'Proposta';
+      const suf = lang==='pt-BR' ? 'pt-BR' : lang;
+      $('#outFile').value = `${base}_${suf}.docx`;
+    });
+
     document.getElementById('formTool').addEventListener('submit', async (e)=>{
       e.preventDefault();
       hide($('#debug'));
@@ -306,7 +308,7 @@
         const criteria = extractCriteria(EDITAL_TXT);
 
         const payload = {
-          lang: ($('#lang').value||'pt-BR').trim(),
+          lang: ($('#lang').value||'pt-BR').trim(),            // agora dropdown
           project: ($('#projectName').value||'').trim(),
           partner: ($('#partnerName').value||'').trim(),
           outFile: ($('#outFile').value||'').trim(),
@@ -314,8 +316,8 @@
           marco_logico: MARCO_TXT.slice(0,120000),
           edital: EDITAL_TXT.slice(0,120000),
           form_text: FORM_TXT.slice(0,120000),
-          questions: questions,              // [{question, limit:{value,unit}}]
-          criteria_from_call: criteria       // array de trechos curtos
+          questions: questions,
+          criteria_from_call: criteria
         };
 
         statusEl.textContent = 'Enviando ao backend...';
@@ -337,7 +339,6 @@ ${text.slice(0,2000)}`;
         let resp = text.trim();
         if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
 
-        // tenta parse direto; se vier envelope maior, tenta localizar {"filled_form":
         let data;
         try{ data = JSON.parse(resp); }
         catch{
