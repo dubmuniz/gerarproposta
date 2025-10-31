@@ -34,6 +34,7 @@
     .hidden{display:none}
     .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .muted{color:#667085;font-size:12px}
+    .pill{display:inline-block;background:#eef6f1;border:1px solid #cfe7d7;color:#1E7E34;border-radius:999px;padding:2px 8px;font-size:12px;margin-left:8px}
   </style>
 </head>
 <body>
@@ -45,19 +46,25 @@
   <main class="wrap">
     <form id="formTool" class="grid" novalidate>
       <div>
-        <label>1) Marco Lógico (PDF, DOCX, TXT, XLSX, XLS)</label>
+        <label>1) Marco Lógico (PDF, DOCX, TXT, XLSX, XLS)
+          <span id="marcoCount" class="pill hidden">0 KB</span>
+        </label>
         <input type="file" id="marcoFile" accept=".pdf,.docx,.doc,.txt,.xlsx,.xls" required>
         <div id="marcoInfo" class="file-info"></div>
       </div>
 
       <div>
-        <label>2) Edital (PDF, DOCX, TXT)</label>
+        <label>2) Edital (PDF, DOCX, TXT)
+          <span id="editalCount" class="pill hidden">0 KB</span>
+        </label>
         <input type="file" id="editalFile" accept=".pdf,.docx,.doc,.txt" required>
         <div id="editalInfo" class="file-info"></div>
       </div>
 
       <div>
-        <label>3) Formulário da Proposta (DOCX, DOC, PDF, XLSX, XLS, TXT)</label>
+        <label>3) Formulário da Proposta (DOCX, DOC, PDF, XLSX, XLS, TXT)
+          <span id="formCount" class="pill hidden">0 KB</span>
+        </label>
         <input type="file" id="formFile" accept=".docx,.doc,.pdf,.xlsx,.xls,.txt" required>
         <div id="formInfo" class="file-info"></div>
       </div>
@@ -102,16 +109,17 @@
 
   <script>
     /* ========= CONFIG ========= */
-    const WEBHOOK_URL = 'https://hook.us2.make.com/a82pipio62kal4ywr4mlmj6w9umqfud4';
+    const WEBHOOK_URL = 'https://hook.us2.make.com/SEU_WEBHOOK_AQUI';
 
     /* ========= HELPERS ========= */
     const $ = s => document.querySelector(s);
     const show = el => el.classList.remove('hidden');
     const hide = el => el.classList.add('hidden');
+    const kb = n => (n/1024).toFixed(1)+' KB';
     const sanitize = s => (s==null?'':String(s)
       .replace(/^\uFEFF/, '')
       .replace(/\uFEFF/g,'')
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g,'')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g,' ')
       .replace(/\r?\n/g,' ')
       .replace(/\s+/g,' ')
       .trim());
@@ -162,7 +170,8 @@
       if(name.endsWith('.pdf')) return readPDF(file);
       if(name.endsWith('.docx')||name.endsWith('.doc')) return readDOCX(file);
       if(name.endsWith('.xlsx')||name.endsWith('.xls')) return readXLSX(file);
-      return sanitize(await file.text());
+      const txt = await file.text();
+      return sanitize(txt);
     }
 
     /* ========= EDITAL: LIMPEZA E EXTRAÇÕES ========= */
@@ -197,17 +206,22 @@
       let m; while((m=rx.exec(text))!==null){
         lim.push({value: parseInt(m[1],10), unit: m[2].toLowerCase()});
       }
-      // páginas em espanhol
       const rxPg = /\bm[aá]ximo\s+(\d{1,2})\s+p[aá]ginas?\b/gi;
       while((m=rxPg.exec(text))!==null){
-        // conversão conservadora: 1 página A4 Arial 10 single ≈ 450–600 palavras
         const p = Math.max(1, parseInt(m[1],10));
         lim.push({value: p*500, unit: 'palavras'});
       }
       return lim;
     }
 
-    /* ========= PARSER GENÉRICO ========= */
+    function normalizeLimit(lim){
+      if(!lim) return null;
+      let unit = (lim.unit||'').toLowerCase();
+      unit = unit.replace('caracteres','chars').replace('caracter','chars')
+                 .replace('palavras','words').replace('palabra','words').replace('palabras','words');
+      return { value: lim.value, unit };
+    }
+
     function parseFormQuestionsGeneric(text){
       const lines = String(text||'').split(/\n|(?<=\?)\s+/).map(s=>s.trim()).filter(Boolean);
       const qs = [];
@@ -219,36 +233,21 @@
           /^t[ií]tulo|resumo|resumen|objetivo|metodolog[ií]a|p[úu]blico|pertin[eé]ncia|pertinencia|justificativa/i.test(L);
         if(isQ){
           const limit = extractLimitsBlock(L);
-          qs.push({
-            question: L.replace(/\s*[:?]$/,''),
-            limit: limit.length? normalizeLimit(limit[0]) : null
-          });
+          qs.push({question: L.replace(/\s*[:?]$/,''), limit: limit.length? normalizeLimit(limit[0]) : null});
         }
       }
-      // cabeçalhos no formato "X. Texto"
       const rxHead = /^\d+(\.\d+)*\.\s+([A-ZÁÂÃÀÉÊÍÓÔÕÚÇÑa-z].{2,})$/gm;
       let m; while((m=rxHead.exec(text))!==null){
         const q = m[0].trim();
         if(!qs.find(x=>x.question===q)) qs.push({question:q, limit:null});
       }
-      // dedup
       const seen = new Set();
-      const out = qs.filter(q=>{
+      return qs.filter(q=>{
         const k = q.question.toLowerCase();
         if(seen.has(k)) return false; seen.add(k); return true;
-      });
-      return out.slice(0,120);
+      }).slice(0,120);
     }
 
-    function normalizeLimit(lim){
-      if(!lim) return null;
-      let unit = (lim.unit||'').toLowerCase();
-      unit = unit.replace('caracteres','chars').replace('caracter','chars')
-                 .replace('palavras','words').replace('palabra','words').replace('palabras','words');
-      return { value: lim.value, unit: unit };
-    }
-
-    /* ========= PARSER ESPECIAL UE (ES) ========= */
     function parseUESpanishForm(text){
       const qs = [];
       const t = ' '+String(text||'')+' ';
@@ -260,77 +259,46 @@
         }
         if(!qs.find(q=>q.question===question)) qs.push({question, limit:lim});
       };
-
-      // 1.1 Resumen
       if(/1\.1\.\s*resumen de la acci[oó]n/i.test(t)) add('1.1. Resumen de la acción', null);
       if(/1\.1\.1\.\s*cumplimente el cuadro/i.test(t)) add('1.1.1. Cumplimente el cuadro del resumen de la acción', null);
-
-      // 1.2 Descripción con máximo 2 páginas
-      const sec12 = /1\.2\.\s*descripci[oó]n de la acci[oó]n[:\s]*\(m[aá]ximo\s*dos\s*p[aá]ginas?\)/i;
-      if(sec12.test(t)) add('1.2. Descripción de la acción', 'máximo dos páginas');
-
-      // subitens i–vii
-      const subs12 = [
-        'i. Señale los antecedentes de la preparación de la acción, sobre todo acerca del contexto sectorial/nacional/regional, incluidas las dificultades principales. Mencione análisis/estudios base.',
-        'ii. Explique los objetivos de la acción mencionados en el cuadro de la sección 1.1.',
-        'iii. Describa los principales grupos de partes interesadas, sus actitudes y las consultas celebradas.',
-        'iv. Resuma la lógica de intervención, productos, efectos directos, impacto, riesgos y supuestos.',
-        'v. Resuma el tipo de actividades propuestas y los vínculos entre grupos de actividades.',
-        'vi. Explique la integración de asuntos transversales: derechos humanos, igualdad de género, democracia, gobernanza, juventud, derechos del menor y pueblos indígenas, sostenibilidad ambiental, VIH/sida.',
-        'vii. Incluya calendario indicativo y factores específicos considerados.'
-      ];
-      subs12.forEach(s=>add(s, 'máximo dos páginas'));
-
-      // 1.3 Pertinencia com máximo 3 páginas
-      const sec13 = /1\.3\.\s*pertinencia de la acci[oó]n[:\s]*\(m[aá]ximo\s*tres\s*p[aá]ginas?\)/i;
-      if(sec13.test(t)) add('1.3. Pertinencia de la acción', 'máximo tres páginas');
-
-      // 1.3.1
-      if(/1\.3\.1\.\s*pertinencia con relaci[oó]n a los objetivos/i.test(t)){
-        add('1.3.1. Pertinencia con relación a los objetivos/sectores/temas/prioridades de la convocatoria', 'máximo tres páginas');
-        add('1.3.1.i. Pertinencia con objetivos y prioridades de la convocatoria', 'máximo tres páginas');
-        add('1.3.1.ii. Pertinencia con subtemas/sectores/ámbitos y requisitos de la Guía', 'máximo tres páginas');
-        add('1.3.1.iii. Resultados previstos a abordar según la Guía', 'máximo tres páginas');
+      if(/1\.2\.\s*descripci[oó]n de la acci[oó]n[:\s]*\(m[aá]ximo\s*dos\s*p[aá]ginas?\)/i.test(t)) add('1.2. Descripción de la acción', 'máximo dos páginas');
+      [
+        'i. Señale los antecedentes y el análisis contextual (nacional/regional, dificultades).',
+        'ii. Explique los objetivos de la acción (sección 1.1).',
+        'iii. Partes interesadas, atitudes e consultas.',
+        'iv. Lógica de intervenção, produtos, efeitos, impacto, riscos e supostos.',
+        'v. Atividades propostas e vínculos entre grupos de atividades.',
+        'vi. Integração de temas transversais (DH, gênero, governança, juventude, povos indígenas, ambiente, HIV).',
+        'vii. Calendário indicativo e fatores específicos considerados.'
+      ].forEach(s=>add(s, 'máximo dos páginas'));
+      if(/1\.3\.\s*pertinencia de la acci[oó]n[:\s]*\(m[aá]ximo\s*tres\s*p[aá]ginas?\)/i.test(t)) add('1.3. Pertinencia de la acción', 'máximo tres páginas');
+      if(/1\.3\.1\./i.test(t)){
+        add('1.3.1. Pertinencia com objetivos/prioridades da convocatória', 'máximo tres páginas');
+        add('1.3.1.i. Pertinencia com objetivos e prioridades', 'máximo tres páginas');
+        add('1.3.1.ii. Subtemas/sectores/âmbitos e requisitos da Guia', 'máximo tres páginas');
+        add('1.3.1.iii. Resultados previstos a abordar segundo a Guia', 'máximo tres páginas');
       }
-
-      // 1.3.2
-      if(/1\.3\.2\.\s*pertinencia con relaci[oó]n a las necesidades/i.test(t)){
-        add('1.3.2.i. Situación previa al proyecto com dados quantificados', 'máximo tres páginas');
-        add('1.3.2.ii. Análisis de problemas e interrelações em todos os níveis', 'máximo tres páginas');
-        add('1.3.2.iii. Planos nacionais/regionais/locais relacionados e ligação da ação', 'máximo tres páginas');
-        add('1.3.2.iv. Continuidade de ação anterior, uso de resultados e recomendações', 'máximo tres páginas');
-        add('1.3.2.v. Integração em programa mais amplo e sinergias, coordenação', 'máximo tres páginas');
-        add('1.3.2.vi. Complementaridade com iniciativas da UE e de outros doadores', 'máximo tres páginas');
+      if(/1\.3\.2\./i.test(t)){
+        add('1.3.2.i. Situação prévia com dados quantificados', 'máximo tres páginas');
+        add('1.3.2.ii. Análise de problemas e inter-relações', 'máximo tres páginas');
+        add('1.3.2.iii. Planos nacionais/regionais/locais e relação com a ação', 'máximo tres páginas');
+        add('1.3.2.iv. Continuidade de ação anterior e uso de resultados', 'máximo tres páginas');
+        add('1.3.2.v. Integração em programa mais amplo e sinergias', 'máximo tres páginas');
+        add('1.3.2.vi. Complementaridade com iniciativas da UE e outros doadores', 'máximo tres páginas');
       }
-
-      // 1.3.3
-      if(/1\.3\.3\.\s*describa y defina los grupos destinatarios/i.test(t)){
-        add('1.3.3.i. Descrição e quantificação de grupos destinatários e beneficiários finais', 'máximo tres páginas');
-        add('1.3.3.ii. Necessidades e dificuldades, inclusive de capacidade', 'máximo tres páginas');
-        add('1.3.3.iii. Pertinência da proposta face às necessidades identificadas', 'máximo tres páginas');
-        add('1.3.3.iv. Processos participativos para garantir participação dos grupos', 'máximo tres páginas');
+      if(/1\.3\.3\./i.test(t)){
+        add('1.3.3.i. Grupos destinatários e beneficiários (descrição e quantificação)', 'máximo tres páginas');
+        add('1.3.3.ii. Necessidades e dificuldades (capacidade)', 'máximo tres páginas');
+        add('1.3.3.iii. Pertinência da proposta frente às necessidades', 'máximo tres páginas');
+        add('1.3.3.iv. Processos participativos de envolvimento', 'máximo tres páginas');
       }
-
-      // 1.3.4 Valor agregado
-      if(/1\.3\.4\.\s*elementos con un valor a[nñ]adido/i.test(t)){
-        add('1.3.4. Elementos de valor agregado: PPP, inovação, boas práticas', 'máximo tres páginas');
-      }
-
-      // 1.4 Solicitante principal
-      if(/1\.4\.\s*solicitante principal/i.test(t)){
-        add('1.4. Solicitante principal, cosolicitantes e afiliadas', null);
-      }
-
-      // Normaliza limites
-      qs.forEach(q=>{
-        if(q.limit) q.limit = normalizeLimit(q.limit);
-      });
-
-      // Se nada foi pego, retorna vazio
+      if(/1\.3\.4\./i.test(t)) add('1.3.4. Elementos de valor agregado (PPP, inovação, boas práticas)', 'máximo tres páginas');
+      if(/1\.4\./i.test(t)) add('1.4. Solicitante principal, cosolicitantes e afiliadas', null);
+      qs.forEach(q=>{ if(q.limit) q.limit = normalizeLimit(q.limit); });
       return qs;
     }
 
-    /* ========= JSON ROBUST PARSER (OBJETO OU ARRAY) ========= */
+    /* ========= JSON ROBUST PARSER ========= */
     function stripFencesAndBOM(s){
       if(!s) return '';
       let t = String(s).replace(/^\uFEFF/, '').trim();
@@ -349,9 +317,8 @@
           continue;
         }else{
           if(c === '"'){ inStr=true; continue; }
-          if(c === openCh){
-            depth++;
-          }else if(c === closeCh){
+          if(c === openCh){ depth++; }
+          else if(c === closeCh){
             depth--;
             if(depth===0){
               const candidate = s.slice(startIndex, i+1).trim();
@@ -372,6 +339,7 @@
       const s = stripFencesAndBOM(raw);
       const n = s.length;
 
+      // tenta achar objeto com a chave esperada
       if(Array.isArray(keyHints) && keyHints.length){
         const idx = s.toLowerCase().indexOf(String(keyHints[0]).toLowerCase());
         if(idx>=0){
@@ -384,6 +352,7 @@
           }
         }
       }
+      // busca primeiro objeto / array
       for(let i=0;i<n;i++){
         const c = s[i];
         if(c==='{'){
@@ -397,6 +366,7 @@
           }
         }
       }
+      // fallback: parse direto
       try{
         const direct = JSON.parse(s);
         if(Array.isArray(direct)) return { filled_form: direct };
@@ -435,30 +405,33 @@
     }
 
     /* ========= UI FILE HOOKS ========= */
-    async function handleFile(inputEl, infoEl, reader){
+    async function handleFile(inputEl, infoEl, reader, counterEl){
       const f = inputEl.files[0];
-      if(!f){ infoEl.style.display='none'; return ''; }
+      if(!f){ infoEl.style.display='none'; if(counterEl) hide(counterEl); return ''; }
       infoEl.textContent='Lendo arquivo...'; infoEl.style.display='block';
       try{
         const txt = await reader(f);
         infoEl.textContent = `✓ ${f.name} | ${(txt.length/1024).toFixed(1)} KB texto`;
+        if(counterEl){ counterEl.textContent = kb(txt.length); show(counterEl); }
         return txt;
       }catch(e){
         infoEl.textContent = 'Erro ao ler: ' + e.message;
+        if(counterEl) { counterEl.textContent = 'erro'; show(counterEl); }
         return '';
       }
     }
 
     let MARCO_TXT='', EDITAL_TXT='', FORM_TXT='';
     $('#marcoFile').addEventListener('change', async ()=>{
-      MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny);
+      MARCO_TXT = await handleFile($('#marcoFile'), $('#marcoInfo'), readAny, $('#marcoCount'));
     });
     $('#editalFile').addEventListener('change', async ()=>{
-      const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny);
+      const raw = await handleFile($('#editalFile'), $('#editalInfo'), readAny, $('#editalCount'));
       EDITAL_TXT = cleanEdital(raw);
+      $('#editalCount').textContent = kb(EDITAL_TXT.length);
     });
     $('#formFile').addEventListener('change', async ()=>{
-      FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny);
+      FORM_TXT = await handleFile($('#formFile'), $('#formInfo'), readAny, $('#formCount'));
     });
 
     // Sugere nome conforme idioma quando vazio
@@ -491,32 +464,37 @@
 
         // 1) Parser genérico
         let questions = parseFormQuestionsGeneric(FORM_TXT);
-
-        // 2) Fallback especializado UE em espanhol se tiver poucas perguntas
+        // 2) Fallback UE ES
         if(questions.length < 8 && /resumen de la acci[oó]n|pertinencia de la acci[oó]n|solicitante principal/i.test(FORM_TXT)){
           const ueQs = parseUESpanishForm(FORM_TXT);
           if(ueQs.length) questions = ueQs;
         }
-
-        // Garantia: remove limites duplicados e normaliza
-        questions = questions.map(q=>{
-          if(q.limit && q.limit.unit) q.limit.unit = q.limit.unit.toLowerCase();
-          return q;
-        });
+        // normaliza unidade
+        questions = questions.map(q=>{ if(q.limit && q.limit.unit) q.limit.unit = q.limit.unit.toLowerCase(); return q; });
 
         const criteria = extractCriteria(EDITAL_TXT);
 
+        // ====== ALINHAMENTO COM O BACKEND ======
+        // Alguns cenários do Make esperam chaves MAIÚSCULAS. Enviamos DUPLO: minúsculas e MAIÚSCULAS.
         const payload = {
+          // campos de controle
           lang: ($('#lang').value||'pt-BR').trim(),
           project: ($('#projectName').value||'').trim(),
           partner: ($('#partnerName').value||'').trim(),
           outFile: ($('#outFile').value||'').trim(),
           notes: ($('#notes').value||'').trim(),
+          // lowercase (versão antiga)
           marco_logico: MARCO_TXT.slice(0,120000),
           edital: EDITAL_TXT.slice(0,120000),
           form_text: FORM_TXT.slice(0,120000),
-          questions: questions,              // [{question, limit:{value,unit}}]
-          criteria_from_call: criteria       // array de trechos curtos
+          questions: questions,
+          criteria_from_call: criteria,
+          // UPPERCASE (para o seu backend atual)
+          MARCO_LOGICO: MARCO_TXT.slice(0,120000),
+          EDITAL: EDITAL_TXT.slice(0,120000),
+          FORM_TEXT: FORM_TXT.slice(0,120000),
+          QUESTIONS: questions,
+          CRITERIA_FROM_CALL: criteria
         };
 
         statusEl.textContent = 'Enviando ao backend...';
@@ -534,18 +512,28 @@ ${text.slice(0,2000)}`;
         show($('#debug'));
 
         if(!ok) throw new Error(`HTTP ${status} ${statusText}`);
-        const resp = text.trim();
-        if(resp.toLowerCase()==='accepted') throw new Error('Webhook sem corpo JSON');
 
-        // ==== PARSE ROBUSTO OBJ/ARRAY, bloqueia lixo pós-JSON ====
+        const resp = text.trim();
+        if(resp.toLowerCase()==='accepted'){
+          throw new Error('Webhook sem corpo JSON (Make retornou “Accepted”). Configure a resposta do módulo para devolver o JSON do Claude.');
+        }
+
+        // Trata resposta de erro do backend (como a que você mostrou)
+        const probe = extractFirstJSONValue(resp, ['"status"','"filled_form"','filled_form']);
+        if(probe && probe.status && String(probe.status).toLowerCase()==='erro'){
+          throw new Error(probe.mensagem || 'Backend reportou erro.');
+        }
+
+        // ==== PARSE DEFINITIVO ====
         const parsed = extractFirstJSONValue(resp, ['"filled_form"','filled_form']);
         if(!parsed) throw new Error('Não foi possível localizar JSON válido na resposta.');
         const data = Array.isArray(parsed.filled_form) ? parsed : (Array.isArray(parsed) ? {filled_form: parsed} : parsed);
 
         if(!data || !Array.isArray(data.filled_form) || data.filled_form.length===0){
-          throw new Error('Resposta inválida do backend. Preview: ' + resp.slice(0,300));
+          throw new Error('Resposta inválida do backend. Prévia: ' + resp.slice(0,300));
         }
 
+        // ==== GERA DOCX ====
         const meta = {
           title: 'Proposta — Formulário Preenchido',
           project: payload.project,
@@ -566,6 +554,78 @@ ${text.slice(0,2000)}`;
         $('#submitBtn').disabled = false;
       }
     });
+
+    // ======= PARSER JSON (reutilizado) =======
+    function extractFirstJSONValue(raw, keyHints){
+      const s = stripFencesAndBOM(raw);
+      const n = s.length;
+      if(Array.isArray(keyHints) && keyHints.length){
+        const idx = s.toLowerCase().indexOf(String(keyHints[0]).toLowerCase());
+        if(idx>=0){
+          for(let j=idx;j>=0;j--){
+            if(s[j]==='{'){
+              const obj = extractBalancedFromStringToJSON(s, j, '{','}');
+              if(obj) return obj;
+              break;
+            }
+          }
+        }
+      }
+      for(let i=0;i<n;i++){
+        const c = s[i];
+        if(c==='{'){
+          const obj = extractBalancedFromStringToJSON(s, i, '{','}');
+          if(obj) return obj;
+        }
+        if(c==='['){
+          const arr = extractBalancedFromStringToJSON(s, i, '[',']');
+          if(arr){
+            if(Array.isArray(arr)) return { filled_form: arr };
+          }
+        }
+      }
+      try{
+        const direct = JSON.parse(s);
+        if(Array.isArray(direct)) return { filled_form: direct };
+        return direct;
+      }catch(_){ return null; }
+    }
+    function extractBalancedFromStringToJSON(s, startIndex, openCh, closeCh){
+      let inStr=false, esc=false, depth=0;
+      for(let i=startIndex;i<s.length;i++){
+        const c = s[i];
+        if(inStr){
+          if(esc){ esc=false; continue; }
+          if(c==='\\'){ esc=true; continue; }
+          if(c==='"'){ inStr=false; continue; }
+          continue;
+        }else{
+          if(c === '"'){ inStr=true; continue; }
+          if(c === openCh){ depth++; }
+          else if(c === closeCh){
+            depth--;
+            if(depth===0){
+              const candidate = s.slice(startIndex, i+1).trim();
+              try{ return JSON.parse(candidate); }
+              catch(_){
+                try{
+                  const cleaned = candidate.replace(/}\s*[\s\S]*$/, '}').replace(/]\s*[\s\S]*$/, ']');
+                  return JSON.parse(cleaned);
+                }catch(__){ return null; }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    }
+    function stripFencesAndBOM(s){
+      if(!s) return '';
+      let t = String(s).replace(/^\uFEFF/, '').trim();
+      if(t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i,'');
+      if(t.endsWith('```')) t = t.slice(0, -3);
+      return t.trim();
+    }
   </script>
 </body>
 </html>
